@@ -1,11 +1,32 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { auth } from '@/firebase'
+import { onAuthStateChanged } from 'firebase/auth'
+
+let authReadyPromise = null
+
+function waitForAuthReady() {
+  if (!authReadyPromise) {
+    authReadyPromise = new Promise((resolve) => {
+      const unsubscribe = onAuthStateChanged(auth, () => {
+        unsubscribe()
+        resolve()
+      })
+    })
+  }
+  return authReadyPromise
+}
 
 const routes = [
   {
     path: '/',
     name: 'Landing',
     component: () => import('@/views/LandingView.vue'),
+    meta: { requiresAuth: false },
+  },
+  {
+    path: '/join',
+    name: 'Join',
+    component: () => import('@/views/JoinView.vue'),
     meta: { requiresAuth: false },
   },
   {
@@ -45,6 +66,12 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/requests',
+    name: 'Requests',
+    component: () => import('@/views/requests/RequestsView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/contributions',
     name: 'Contributions',
     component: () => import('@/views/contributions/ContributionsView.vue'),
@@ -81,17 +108,21 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to) => {
+  await waitForAuthReady()
   const requiresAuth = to.meta.requiresAuth
   const user = auth.currentUser
 
   if (requiresAuth && !user) {
-    next({ name: 'Landing' })
-  } else if (!requiresAuth && user && to.name === 'Landing') {
-    next({ name: 'Dashboard' })
-  } else {
-    next()
+    return { name: 'Landing' }
   }
+
+  if (!requiresAuth && user && (to.name === 'Landing' || to.name === 'Login' || to.name === 'Register')) {
+    if (to.query.invite) return { name: 'Join', query: { invite: to.query.invite } }
+    return { name: 'Dashboard' }
+  }
+
+  return true
 })
 
 export default router

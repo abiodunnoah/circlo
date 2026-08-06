@@ -64,6 +64,8 @@ A participant in the savings group. Can view their contribution history, see who
 
 ### 5.2 Authentication
 - Register with email and password
+- Confirm password field on registration — validates passwords match on submit before calling Firebase
+- Show/hide password toggle on both Login and Register password fields
 - Login / Logout
 - Firebase Auth as the auth provider
 - Protected routes — unauthenticated users redirected to Landing page
@@ -324,6 +326,7 @@ circlo/
 - [ ] Remove placeholder stores/counter.js
 - [ ] Create .env.example with all VITE_FIREBASE_* keys
 - [ ] Set up Firebase Emulator Suite (firebase.json)
+- [ ] Enable Firestore test mode in Firebase console for development (30-day window, re-enable as needed)
 - [ ] Install and configure Vitest + Vue Test Utils
 - [ ] Write manual test checklist: Phase 0 setup verification
 
@@ -373,7 +376,10 @@ circlo/
 - [ ] ProfileView — update display name, view groups
 - [ ] Contribution history per member
 - [ ] Refine invite link UX (WhatsApp share button, link formatting)
-- [ ] Write Firestore security rules
+- [ ] Write `firestore.rules` with business-logic rules (admin-only writes, members see own groups, self-owned user doc, etc.)
+- [ ] Create `firebase.json` (project config + emulator setup)
+- [ ] Write Firestore rules tests with `@firebase/rules-unit-testing` (run against emulator)
+- [ ] Deploy locked rules via `firebase deploy --only firestore:rules` — replaces test mode before production
 - [ ] Install and configure Playwright for E2E smoke tests
 - [ ] favicon
 - [ ] Final manual QA pass
@@ -469,7 +475,7 @@ Located in `tests/test-plans/`. Each phase has a checklist of flows to verify ma
 | 1 | Vitest: auth store, group store, invite flow; Manual checklist |
 | 2 | Vitest: contribution store, rotation/cycle logic; Manual checklist |
 | 3 | Manual checklist: notifications, reports, PDF |
-| 4 | Playwright smoke tests; Final QA pass |
+| 4 | Firestore rules tests (emulator), Playwright smoke tests; Final QA pass |
 
 ---
 

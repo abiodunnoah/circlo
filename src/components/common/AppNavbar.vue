@@ -1,17 +1,67 @@
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useGroupsStore } from '@/stores/groups'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
+const groupsStore = useGroupsStore()
 
 const mobileOpen = ref(false)
+
+const isAdminOfAnyGroup = computed(() => groupsStore.groups.some((g) => g.role === 'admin'))
+const pendingRequestCount = computed(() => groupsStore.pendingRequests.length)
+
+const navItems = computed(() => {
+  const items = [
+    { label: 'Dashboard', name: 'Dashboard', routeNames: ['Dashboard'] },
+    { label: 'Groups', name: 'GroupList', routeNames: ['GroupList', 'GroupDetail', 'CreateGroup'] },
+  ]
+  if (isAdminOfAnyGroup.value) {
+    items.push({
+      label: 'Requests',
+      name: 'Requests',
+      routeNames: ['Requests'],
+      badge: pendingRequestCount,
+    })
+  }
+  items.push(
+    { label: 'Notifications', name: 'Notifications', routeNames: ['Notifications'] },
+    { label: 'Profile', name: 'Profile', routeNames: ['Profile'] },
+  )
+  return items
+})
+
+function isActive(item) {
+  return item.routeNames.includes(route.name)
+}
 
 function navigate(name) {
   mobileOpen.value = false
   router.push({ name })
 }
+
+async function handleLogout() {
+  mobileOpen.value = false
+  await authStore.logout()
+  router.push({ name: 'Landing' })
+}
+
+function refreshRequestCount() {
+  if (authStore.user && isAdminOfAnyGroup.value && route.name !== 'Requests') {
+    groupsStore.fetchPendingRequests()
+  }
+}
+
+watch(isAdminOfAnyGroup, (value) => {
+  if (value) refreshRequestCount()
+})
+
+onMounted(() => {
+  refreshRequestCount()
+})
 </script>
 
 <template>
@@ -23,11 +73,25 @@ function navigate(name) {
         </button>
 
         <div v-if="authStore.user" class="hidden md:flex items-center gap-6">
-          <button class="text-sm text-slate-600 hover:text-slate-900 cursor-pointer font-medium" @click="navigate('Dashboard')">Dashboard</button>
-          <button class="text-sm text-slate-600 hover:text-slate-900 cursor-pointer font-medium" @click="navigate('GroupList')">Groups</button>
-          <button class="text-sm text-slate-600 hover:text-slate-900 cursor-pointer font-medium" @click="navigate('Notifications')">Notifications</button>
-          <button class="text-sm text-slate-600 hover:text-slate-900 cursor-pointer font-medium" @click="navigate('Profile')">Profile</button>
-          <button class="text-sm font-medium text-red-600 hover:text-red-700 cursor-pointer" @click="navigate('Landing')">Logout</button>
+          <button
+            v-for="item in navItems"
+            :key="item.name"
+            class="text-sm font-medium cursor-pointer transition-colors"
+            :class="isActive(item) ? 'text-primary-700' : 'text-slate-600 hover:text-slate-900'"
+            @click="navigate(item.name)"
+          >
+            <span class="flex items-center gap-1.5">
+              {{ item.label }}
+              <span
+                v-if="item.badge && item.badge.value"
+                class="bg-accent-500 text-white text-xs font-semibold rounded-full min-w-[1.25rem] px-1.5 py-0.5 leading-none"
+              >
+                {{ item.badge.value }}
+              </span>
+            </span>
+            <span v-if="isActive(item)" class="block h-0.5 w-6 bg-primary-600 rounded-full mt-0.5 mx-auto" />
+          </button>
+          <button class="text-sm font-medium text-red-600 hover:text-red-700 cursor-pointer" @click="handleLogout">Logout</button>
         </div>
 
         <div v-else class="hidden md:flex items-center gap-3">
@@ -45,11 +109,22 @@ function navigate(name) {
 
       <div v-if="mobileOpen" class="md:hidden pb-4 border-t border-slate-100 pt-3 flex flex-col gap-2">
         <template v-if="authStore.user">
-          <button class="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg cursor-pointer" @click="navigate('Dashboard')">Dashboard</button>
-          <button class="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg cursor-pointer" @click="navigate('GroupList')">Groups</button>
-          <button class="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg cursor-pointer" @click="navigate('Notifications')">Notifications</button>
-          <button class="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg cursor-pointer" @click="navigate('Profile')">Profile</button>
-          <button class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg cursor-pointer" @click="navigate('Landing')">Logout</button>
+          <button
+            v-for="item in navItems"
+            :key="item.name"
+            class="w-full text-left px-3 py-2 text-sm rounded-lg cursor-pointer flex items-center justify-between"
+            :class="isActive(item) ? 'bg-primary-50 text-primary-700 font-medium' : 'text-slate-600 hover:bg-slate-50'"
+            @click="navigate(item.name)"
+          >
+            <span>{{ item.label }}</span>
+            <span
+              v-if="item.badge && item.badge.value"
+              class="bg-accent-500 text-white text-xs font-semibold rounded-full min-w-[1.25rem] px-1.5 py-0.5 leading-none"
+            >
+              {{ item.badge.value }}
+            </span>
+          </button>
+          <button class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg cursor-pointer" @click="handleLogout">Logout</button>
         </template>
         <template v-else>
           <button class="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg cursor-pointer" @click="navigate('Login')">Sign In</button>
