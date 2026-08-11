@@ -3,6 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGroupsStore } from '@/stores/groups'
+import { useContributionsStore } from '@/stores/contributions'
 import { useToast } from '@/composables/useToast'
 import AppCard from '@/components/common/AppCard.vue'
 import AppLoader from '@/components/common/AppLoader.vue'
@@ -11,6 +12,7 @@ import AppEmpty from '@/components/common/AppEmpty.vue'
 const router = useRouter()
 const authStore = useAuthStore()
 const groupsStore = useGroupsStore()
+const contributionsStore = useContributionsStore()
 const toast = useToast()
 
 const groups = computed(() => groupsStore.groups)
@@ -27,13 +29,7 @@ function openGroup(g) {
   router.push({ name: 'GroupDetail', params: { id: g.id } })
 }
 
-const totalContributed = computed(() => {
-  let total = 0
-  for (const g of groups.value) {
-    total += Number(g.contributionAmount || 0) * Number(g.totalMembers || 0) * Number(g.currentCycle || 0)
-  }
-  return total
-})
+const totalContributed = computed(() => contributionsStore.myTotalContributed)
 
 const pendingCount = computed(() => {
   if (groupsStore.pendingRequests.length) return groupsStore.pendingRequests.length
@@ -48,6 +44,7 @@ function formatNaira(amount) {
 
 onMounted(() => {
   groupsStore.fetchUserGroups()
+  contributionsStore.fetchMyContributions()
 })
 </script>
 
@@ -121,6 +118,10 @@ onMounted(() => {
             <div class="flex justify-between">
               <span class="text-muted">Cycle</span>
               <span class="font-medium">{{ g.currentCycle }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-muted">Next payout</span>
+              <span class="font-medium">{{ g.nextRecipientName || '—' }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-muted">Members</span>

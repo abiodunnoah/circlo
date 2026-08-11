@@ -104,37 +104,43 @@ Step 7 → On approval: member sees the group in their dashboard immediately
 ```
 
 ### 5.5 Cycle Management
+- A **cycle** is a single payout round: every eligible member contributes and one designated member receives the pot
+- A **rotation** is the full set of cycles covering every eligible member once
 - Admin manually starts each cycle via a "Start New Cycle" button on the group detail page
 - The first cycle begins when the admin triggers it (not automatically on startDate)
 - When a new cycle starts:
   - `currentCycle` increments by 1
   - `currentCycleStartDate` records the timestamp
-  - All members' `hasReceived` resets to `false`
-  - Members who were approved since the last cycle now enter the active rotation
-  - Admin can adjust rotation order before starting the new cycle
-- When a cycle ends (admin clicks "Start Next Cycle" or after all have received):
-  - The admin has the option to start the next cycle or wait
-  - Member removal is only allowed between cycles
-- Dashboard shows cycle progress: "X of Y members have received the pot this cycle"
+  - The next unreceived eligible member (lowest `rotationOrder`) becomes `currentCycleRecipientId`
+  - Members approved since the last cycle enter the rotation at the next rotation boundary
+- "Start New Cycle" is gated on the current cycle's recipient having been marked as paid
+- When every eligible member has received once (rotation concludes):
+  - `rotation` increments
+  - All eligible members' `hasReceived` resets to `false`
+  - `joinedCycle` is reset to the new cycle so mid-rotation joins become eligible
+- Member removal is only allowed between rotations
+- Dashboard shows rotation progress: "X of Y members have received the pot this rotation"
 
 ### 5.6 Contribution Tracking
-- Admin manually marks a member as paid for a given cycle
+- Admin manually marks a member as paid for a given cycle — **any** eligible member, one record per member per cycle
 - System records: userId, cycle number, amount, date paid, markedBy (adminId)
+- Receiving the pot is a separate fact, tracked via `hasReceived` on the member doc and set by **Confirm Payout** (the current cycle recipient only)
 - Admin can see at a glance who has paid and who has not per cycle
-- Members can see their own full contribution history
+- Members can see their own full contribution history ("My Contributions")
+- Wrongly-marked payments are soft-voided (`status: "void"`) — the record is preserved for audit but excluded from totals
+- "Start New Cycle" gates on the recipient having had their payout confirmed; unpaid dues from other members surface as a non-blocking amber warning (a single late payer must not freeze the group — 35% of ROSCA members default at least once)
 
 ### 5.7 Rotation Tracking
 - Admin sets rotation order when approving members (sequential 1, 2, 3...)
-- The rotation order is a fixed sequence that repeats each cycle
-- System tracks who has received the pot (`hasReceived: true`)
+- The rotation order is a fixed sequence that repeats each rotation
+- System tracks who has received the pot (`hasReceived: true`) across cycles within a rotation
 - Dashboard shows who is next in rotation — the member with the lowest `rotationOrder` whose `hasReceived` is still `false`
-- When all members have received, the admin can start the next cycle
-- Rotation resets when a new cycle begins (all `hasReceived` → `false`)
+- When every eligible member has received, a new rotation begins and `hasReceived` resets
 
 ### 5.8 Dashboard
 - Overview of all groups (separate admin and member views)
 - Active cycle progress per group
-- Quick stats: total contributed, next payout recipient, members paid this cycle
+- Quick stats: total contributed (real sum of the user's paid records), next payout recipient, members paid this cycle
 
 ### 5.9 Notifications (In-App)
 - Contribution marked as paid → notify the member
@@ -209,8 +215,10 @@ contributionAmount  number
 frequency           "weekly" | "monthly"
 startDate           timestamp
 totalMembers        number
-currentCycle        number
+currentCycle        number — current payout round (a cycle = one payout; a rotation = N cycles)
 currentCycleStartDate timestamp  — when the current cycle was started
+currentCycleRecipientId string — member id designated to receive the pot this cycle
+rotation            number — increments each time a full rotation concludes
 status              "active" | "completed"
 inviteCode          string
 createdAt           timestamp
@@ -233,10 +241,14 @@ leftAt        timestamp — when admin removed the member between cycles
 ```
 userId      string
 cycle       number
-amount      number
+amount      number — snapshotted from the group at marking time
 paidAt      timestamp
 markedBy    string (adminId)
+status      "paid" | "void" — void keeps the record for audit but excludes it from totals
+voidedBy    string (adminId) — set when voided
+voidedAt    timestamp — set when voided
 ```
+Contribution doc ids are deterministic (`{cycle}_{userId}`) so double-clicks cannot create duplicates.
 
 ### `notifications/{notificationId}`
 ```
@@ -352,14 +364,17 @@ circlo/
 - [ ] Manual test checklist: Phase 1 verification
 
 ### Phase 2 — Contributions + Rotation
-- [ ] Admin marks a member as paid for a cycle
-- [ ] ContributionsView — per-cycle payment status table
-- [ ] Rotation order display — who has received, who is next
-- [ ] Cycle management: "Start New Cycle" button and logic
-- [ ] cycleStartDate tracking, hasReceived reset on new cycle
-- [ ] DashboardView — group overview, stats, next payout
-- [ ] Contributions Pinia store
-- [ ] Vitest tests: contribution store, rotation/cycle logic
+- [x] Admin marks a member as paid for a cycle (any eligible member; N records per cycle)
+- [x] ContributionsView — per-cycle payment status table (group Contributions tab)
+- [x] Rotation order display — who has received, who is next
+- [x] Cycle management: "Start New Cycle" button and logic
+- [x] Cycle = one payout round; rotation = N cycles; hasReceived persists across cycles, resets on rotation
+- [x] Payout gating: "Start New Cycle" requires the current recipient's payout confirmed
+- [x] Amber warning when contributors have unpaid dues for the current cycle (non-blocking)
+- [x] DashboardView — group overview, stats, next payout (real total contributed)
+- [x] Contributions Pinia store (deterministic doc ids, soft-void, confirm-payout, my-contributions)
+- [x] My Contributions page (per-member history)
+- [x] Vitest tests: contribution store, rotation/cycle logic
 - [ ] Manual test checklist: Phase 2 verification
 
 ### Phase 3 — Notifications + Reports
@@ -389,6 +404,14 @@ circlo/
 - [ ] Paystack payment integration
 - [ ] PWA setup (manifest, service worker)
 - [ ] Push notifications
+
+### Phase 6 — v2 (Chit Fund Mode)
+- [ ] Arrears tracker: "Collected but owing" badge (member `cyclesOwed`) + report integration — highest-value risk signal
+- [ ] Multiple slots per member (pay 2×, collect 2×)
+- [ ] Slot swapping between members (with admin confirmation)
+- [ ] Auction/bidding mode (chit fund): winner bids lowest discount; surplus redistributed — addresses the "last position gets zero return" fairness gap
+- [ ] Organizer fee/commission support
+- [ ] Surety requirement for early winners (post-approval default protection)
 
 ---
 

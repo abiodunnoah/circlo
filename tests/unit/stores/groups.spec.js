@@ -136,11 +136,15 @@ describe('groups store', () => {
     expect(groupUpdate.pendingCount).toBe(0)
   })
 
-  it('startNewCycle rejects when the current cycle is still in progress', async () => {
-    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ currentCycle: 1 }) })
+  it('startNewCycle rejects when the current cycle recipient has not been paid', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ currentCycle: 1, currentCycleRecipientId: 'a', rotation: 1 }),
+    })
     mocks.mockGetDocs.mockResolvedValueOnce({
       docs: [
-        { id: 'a', ref: {}, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, hasReceived: false }) },
+        { id: 'a', ref: { id: 'a' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, hasReceived: false }) },
+        { id: 'b', ref: { id: 'b' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, hasReceived: false }) },
       ],
     })
     const store = useGroupsStore()
@@ -149,27 +153,51 @@ describe('groups store', () => {
     expect(mocks.mockUpdateDoc).not.toHaveBeenCalled()
   })
 
-  it('startNewCycle increments the cycle and resets received status when concluded', async () => {
-    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ currentCycle: 1 }) })
-    mocks.mockGetDocs
-      .mockResolvedValueOnce({
-        docs: [
-          { id: 'a', ref: { id: 'a' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, hasReceived: true }) },
-        ],
-      })
-      .mockResolvedValueOnce({
-        docs: [
-          { id: 'a', ref: { id: 'a' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, hasReceived: true }) },
-        ],
-      })
+  it('startNewCycle advances the rotation when all eligible members have received', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ currentCycle: 2, currentCycleRecipientId: 'b', rotation: 1 }),
+    })
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'a', ref: { id: 'a' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, hasReceived: true }) },
+        { id: 'b', ref: { id: 'b' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, hasReceived: true }) },
+      ],
+    })
     const store = useGroupsStore()
 
     await store.startNewCycle('group-1')
 
+    expect(mocks.mockUpdateDoc).toHaveBeenCalledTimes(3)
+    const memberUpdate = mocks.mockUpdateDoc.mock.calls[0][1]
+    expect(memberUpdate.hasReceived).toBe(false)
+    expect(memberUpdate.joinedCycle).toBe(3)
+    const groupUpdate = mocks.mockUpdateDoc.mock.calls[2][1]
+    expect(groupUpdate.currentCycle).toBe(3)
+    expect(groupUpdate.rotation).toBe(2)
+    expect(groupUpdate.currentCycleRecipientId).toBe('a')
+  })
+
+  it('startNewCycle advances within a rotation without resetting received status', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ currentCycle: 1, currentCycleRecipientId: 'a', rotation: 1 }),
+    })
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'a', ref: { id: 'a' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, hasReceived: true }) },
+        { id: 'b', ref: { id: 'b' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, hasReceived: false }) },
+      ],
+    })
+    const store = useGroupsStore()
+
+    await store.startNewCycle('group-1')
+
+    expect(mocks.mockUpdateDoc).toHaveBeenCalledTimes(1)
     const groupUpdate = mocks.mockUpdateDoc.mock.calls[0][1]
     expect(groupUpdate.currentCycle).toBe(2)
-    const memberUpdate = mocks.mockUpdateDoc.mock.calls[1][1]
-    expect(memberUpdate.hasReceived).toBe(false)
+    expect(groupUpdate.rotation).toBe(1)
+    expect(groupUpdate.currentCycleRecipientId).toBe('b')
   })
 
   it('fetchUserGroups surfaces membership status on member groups', async () => {

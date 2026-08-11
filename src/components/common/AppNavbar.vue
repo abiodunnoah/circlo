@@ -28,6 +28,7 @@ const navItems = computed(() => {
     })
   }
   items.push(
+    { label: 'My Contributions', name: 'Contributions', routeNames: ['Contributions'] },
     { label: 'Notifications', name: 'Notifications', routeNames: ['Notifications'] },
     { label: 'Profile', name: 'Profile', routeNames: ['Profile'] },
   )

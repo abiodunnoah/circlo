@@ -1,67 +1,81 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useContributionsStore } from '@/stores/contributions'
+import AppLoader from '@/components/common/AppLoader.vue'
 import AppBadge from '@/components/common/AppBadge.vue'
+import AppEmpty from '@/components/common/AppEmpty.vue'
 
-const cycles = [1, 2, 3, 4, 5]
-const selectedCycle = ref(6)
+const router = useRouter()
+const contributionsStore = useContributionsStore()
 
-const contributions = [
-  { name: 'Chidi Nwosu', paid: true, date: '2025-06-15', amount: 20000 },
-  { name: 'Amara Okafor', paid: true, date: '2025-06-14', amount: 20000 },
-  { name: 'Tunde Balogun', paid: true, date: '2025-06-16', amount: 20000 },
-  { name: 'Fatima Bello', paid: false, date: null, amount: 20000 },
-  { name: 'Emeka Obi', paid: false, date: null, amount: 20000 },
-  { name: 'Ngozi Eze', paid: false, date: null, amount: 20000 },
-]
+function formatNaira(amount) {
+  return '₦' + Number(amount || 0).toLocaleString()
+}
 
-const paidCount = contributions.filter((c) => c.paid).length
+function formatDate(value) {
+  if (!value) return '—'
+  const time = typeof value.toMillis === 'function' ? value.toMillis() : value
+  return new Date(time).toLocaleDateString()
+}
+
+onMounted(() => {
+  contributionsStore.fetchMyContributions()
+})
 </script>
 
 <template>
   <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-      <h1 class="text-2xl font-bold text-slate-900">Contributions</h1>
+    <h1 class="text-2xl font-bold text-slate-900 mb-6">My Contributions</h1>
 
-      <div class="flex items-center gap-2">
-        <label class="text-sm text-muted">Cycle:</label>
-        <select v-model="selectedCycle" class="rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-          <option v-for="c in cycles" :key="c" :value="c">Cycle {{ c }}</option>
-          <option value="6">Cycle 6 (current)</option>
-        </select>
-      </div>
+    <div v-if="contributionsStore.myContributionsLoading" class="bg-white rounded-xl border border-slate-200 shadow-sm">
+      <AppLoader text="Loading your contributions..." />
     </div>
 
-    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-        <p class="text-sm font-medium text-slate-700">Cycle {{ selectedCycle }}</p>
-        <p class="text-sm text-muted">{{ paidCount }} of {{ contributions.length }} paid</p>
+    <template v-else>
+      <div v-if="contributionsStore.myContributionsError" class="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+        <p class="text-sm font-medium text-red-800 mb-1">Couldn't load your contributions</p>
+        <p class="text-sm text-red-700 mb-2">{{ contributionsStore.myContributionsError }}</p>
+        <button class="text-sm font-medium text-red-700 underline cursor-pointer" @click="contributionsStore.fetchMyContributions()">Try again</button>
       </div>
 
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-slate-100">
-            <th class="text-left px-5 py-3 font-medium text-muted">Member</th>
-            <th class="text-left px-5 py-3 font-medium text-muted">Status</th>
-            <th class="text-left px-5 py-3 font-medium text-muted hidden sm:table-cell">Date Paid</th>
-            <th class="text-right px-5 py-3 font-medium text-muted">Amount</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-          <tr v-for="c in contributions" :key="c.name" class="hover:bg-slate-50">
-            <td class="px-5 py-3 font-medium text-slate-900">{{ c.name }}</td>
-            <td class="px-5 py-3">
-              <AppBadge v-if="c.paid" variant="paid">Paid</AppBadge>
-              <AppBadge v-else variant="pending">Unpaid</AppBadge>
-            </td>
-            <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ c.date || '—' }}</td>
-            <td class="px-5 py-3 text-right font-medium">₦{{ c.amount.toLocaleString() }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+        <p class="text-sm text-muted mb-1">Total Contributed</p>
+        <p class="text-2xl font-bold text-slate-900">{{ formatNaira(contributionsStore.myTotalContributed) }}</p>
+      </div>
 
-    <div class="mt-6 text-center">
-      <button class="bg-primary-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer">Mark Selected as Paid</button>
-    </div>
+      <div v-if="contributionsStore.myContributions.length" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 bg-slate-50 text-left">
+              <th class="px-5 py-3 font-medium text-muted">Group</th>
+              <th class="px-5 py-3 font-medium text-muted">Cycle</th>
+              <th class="px-5 py-3 font-medium text-muted">Amount</th>
+              <th class="px-5 py-3 font-medium text-muted hidden sm:table-cell">Date Paid</th>
+              <th class="px-5 py-3 font-medium text-muted">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr v-for="c in contributionsStore.myContributions" :key="c.id" class="hover:bg-slate-50 cursor-pointer" @click="router.push({ name: 'GroupDetail', params: { id: c.groupId } })">
+              <td class="px-5 py-3 font-medium text-slate-900">{{ c.groupName }}</td>
+              <td class="px-5 py-3 text-slate-700">Cycle {{ c.cycle }}</td>
+              <td class="px-5 py-3 text-slate-700">{{ formatNaira(c.amount) }}</td>
+              <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ formatDate(c.paidAt) }}</td>
+              <td class="px-5 py-3">
+                <AppBadge v-if="c.status === 'void'" variant="void">Voided</AppBadge>
+                <AppBadge v-else variant="paid">Paid</AppBadge>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div v-else class="bg-white rounded-xl border border-slate-200 shadow-sm">
+        <AppEmpty
+          title="No contributions yet"
+          description="Once your group starts a cycle and the admin marks your payments, they'll show up here."
+        />
+      </div>
+    </template>
   </div>
 </template>

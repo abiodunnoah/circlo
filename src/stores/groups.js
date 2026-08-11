@@ -153,7 +153,21 @@ export const useGroupsStore = defineStore('groups', () => {
       error.value = e.message
     }
 
-    groups.value = [...adminGroups, ...memberOnlyGroups]
+    const allGroups = [...adminGroups, ...memberOnlyGroups]
+
+    for (const g of allGroups) {
+      const recipientId = g.currentCycleRecipientId
+      if (!recipientId) continue
+      try {
+        const recipientDoc = await getDoc(doc(db, 'groups', g.id, 'members', recipientId))
+        g.nextRecipientName = recipientDoc.exists() ? recipientDoc.data().displayName : null
+      } catch (e) {
+        console.error(`Failed to load next recipient for group ${g.id}`, e)
+        g.nextRecipientName = null
+      }
+    }
+
+    groups.value = allGroups
     loading.value = false
   }
 
@@ -333,41 +347,43 @@ export const useGroupsStore = defineStore('groups', () => {
     if (!groupDoc.exists()) throw new Error('Group not found')
     const groupData = groupDoc.data()
     const currentCycle = groupData.currentCycle || 0
-
-    if (currentCycle >= 1) {
-      const snapshot = await getDocs(collection(db, 'groups', groupId, 'members'))
-      const eligible = snapshot.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter(
-          (m) =>
-            m.status === 'approved' &&
-            !m.leftAt &&
-            (m.joinedCycle ?? 1) <= currentCycle,
-        )
-      if (eligible.some((m) => !m.hasReceived)) {
-        throw new Error(
-          'The current cycle is still in progress. All eligible members must receive the pot before a new cycle can start.',
-        )
-      }
-    }
-
-    await updateDoc(groupRef, {
-      currentCycle: currentCycle + 1,
-      currentCycleStartDate: new Date(),
-    })
+    const recipientId = groupData.currentCycleRecipientId || null
 
     const membersSnapshot = await getDocs(collection(db, 'groups', groupId, 'members'))
-    for (const m of membersSnapshot.docs) {
-      const data = m.data()
-      if (data.status === 'approved' && !data.leftAt && (data.joinedCycle ?? 1) <= currentCycle + 1) {
-        await updateDoc(m.ref, { hasReceived: false })
+    const allMembers = membersSnapshot.docs.map((d) => ({ id: d.id, ref: d.ref, ...d.data() }))
+    const eligible = allMembers.filter(
+      (m) => m.status === 'approved' && !m.leftAt && (m.joinedCycle ?? 1) <= Math.max(currentCycle, 1),
+    )
+
+    if (currentCycle >= 1 && recipientId) {
+      const recipient = allMembers.find((m) => m.id === recipientId)
+      if (!recipient || !recipient.hasReceived) {
+        throw new Error(
+          'The current cycle is still in progress. The designated recipient must be marked as paid before a new cycle can start.',
+        )
       }
     }
-  }
 
-  async function markMemberReceived(groupId, memberId) {
-    await updateDoc(doc(db, 'groups', groupId, 'members', memberId), {
-      hasReceived: true,
+    const newCycle = currentCycle + 1
+    const rotationConcluded = eligible.length > 0 && eligible.every((m) => m.hasReceived)
+
+    if (rotationConcluded) {
+      for (const m of eligible) {
+        await updateDoc(m.ref, { hasReceived: false, joinedCycle: newCycle })
+        m.hasReceived = false
+        m.joinedCycle = newCycle
+      }
+    }
+
+    const nextEligible = eligible
+      .filter((m) => !m.hasReceived)
+      .sort((a, b) => a.rotationOrder - b.rotationOrder)
+
+    await updateDoc(groupRef, {
+      currentCycle: newCycle,
+      currentCycleStartDate: new Date(),
+      rotation: (groupData.rotation || 1) + (rotationConcluded ? 1 : 0),
+      currentCycleRecipientId: nextEligible[0]?.id || null,
     })
   }
 
@@ -468,7 +484,6 @@ export const useGroupsStore = defineStore('groups', () => {
     rejectMember,
     removeMember,
     startNewCycle,
-    markMemberReceived,
     syncMemberDisplayName,
     fetchPendingRequests,
   }
