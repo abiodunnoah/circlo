@@ -1,13 +1,15 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { db, auth } from '@/firebase'
-import { collection, doc, query, where, getDocs, getDoc, addDoc, updateDoc, setDoc, onSnapshot, arrayUnion, serverTimestamp } from 'firebase/firestore'
+import { collection, doc, query, where, getDocs, getDoc, addDoc, updateDoc, setDoc, onSnapshot, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore'
 
 function generateInviteCode() {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  const random = new Uint8Array(8)
+  crypto.getRandomValues(random)
   let code = ''
   for (let i = 0; i < 8; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)]
+    code += chars[random[i] % chars.length]
   }
   return code
 }
@@ -88,6 +90,8 @@ export const useGroupsStore = defineStore('groups', () => {
         joinedAt: serverTimestamp(),
         approvedAt: serverTimestamp(),
       })
+
+      await ensureMembership(adminId, groupRef.id)
 
       return groupRef.id
     } catch (e) {
@@ -248,6 +252,16 @@ export const useGroupsStore = defineStore('groups', () => {
         await ensureMembership(userId, group.id)
         return { group, member: { id: memberRef.id, ...existing }, status: 'pending' }
       }
+      if (existing.status === 'rejected') {
+        throw new Error('Your previous request to join this group was declined. Please contact the admin.')
+      }
+      if (existing.status === 'left') {
+        throw new Error('You have left this group. Please contact the admin if you want to rejoin.')
+      }
+    }
+
+    if (group.currentCycleRecipientId) {
+      throw new Error('This group is currently mid-rotation. New members can join once every member has received the pot this rotation.')
     }
 
     await setDoc(memberRef, {
@@ -323,6 +337,8 @@ export const useGroupsStore = defineStore('groups', () => {
       leftAt: serverTimestamp(),
     })
 
+    await updateDoc(doc(db, 'users', memberId), { memberGroupIds: arrayRemove(groupId) })
+
     const totalMembers = Math.max(0, (groupDoc.data().totalMembers || 1) - 1)
     await updateDoc(doc(db, 'groups', groupId), { totalMembers })
 
@@ -373,6 +389,10 @@ export const useGroupsStore = defineStore('groups', () => {
         m.hasReceived = false
         m.joinedCycle = newCycle
       }
+    }
+
+    if (eligible.length === 0) {
+      throw new Error('This group has no eligible members. Approve members before starting a cycle.')
     }
 
     const nextEligible = eligible

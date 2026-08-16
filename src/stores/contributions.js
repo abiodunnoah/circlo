@@ -74,6 +74,12 @@ export const useContributionsStore = defineStore('contributions', () => {
     const groupData = groupDoc.data()
     if (groupData.adminId !== adminId) throw new Error('Only the group admin can mark contributions as paid')
 
+    const memberRef = doc(db, 'groups', groupId, 'members', userId)
+    const memberDoc = await getDoc(memberRef)
+    if (!memberDoc.exists() || memberDoc.data().status !== 'approved') {
+      throw new Error('This member is not an approved member of the group')
+    }
+
     const amount = Number(groupData.contributionAmount || 0)
     const docId = contributionDocId(groupId, userId, cycle)
 
@@ -108,9 +114,6 @@ export const useContributionsStore = defineStore('contributions', () => {
     const memberRef = doc(db, 'groups', groupId, 'members', memberId)
     const memberDoc = await getDoc(memberRef)
     if (!memberDoc.exists()) throw new Error('Member not found')
-    if (memberDoc.data().userId !== memberId) {
-      throw new Error('Member document mismatch')
-    }
 
     await updateDoc(memberRef, { hasReceived: true })
   }

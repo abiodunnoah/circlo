@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGroupsStore } from '@/stores/groups'
+import AppModal from '@/components/common/AppModal.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -10,6 +11,7 @@ const authStore = useAuthStore()
 const groupsStore = useGroupsStore()
 
 const mobileOpen = ref(false)
+const showLogoutModal = ref(false)
 
 const isAdminOfAnyGroup = computed(() => groupsStore.groups.some((g) => g.role === 'admin'))
 const pendingRequestCount = computed(() => groupsStore.pendingRequests.length)
@@ -44,8 +46,13 @@ function navigate(name) {
   router.push({ name })
 }
 
-async function handleLogout() {
+function openLogoutModal() {
   mobileOpen.value = false
+  showLogoutModal.value = true
+}
+
+async function confirmLogout() {
+  showLogoutModal.value = false
   await authStore.logout()
   router.push({ name: 'Landing' })
 }
@@ -92,7 +99,7 @@ onMounted(() => {
             </span>
             <span v-if="isActive(item)" class="block h-0.5 w-6 bg-primary-600 rounded-full mt-0.5 mx-auto" />
           </button>
-          <button class="text-sm font-medium text-red-600 hover:text-red-700 cursor-pointer" @click="handleLogout">Logout</button>
+          <button class="text-sm font-medium text-red-600 hover:text-red-700 cursor-pointer" @click="openLogoutModal">Logout</button>
         </div>
 
         <div v-else class="hidden md:flex items-center gap-3">
@@ -125,7 +132,7 @@ onMounted(() => {
               {{ item.badge.value }}
             </span>
           </button>
-          <button class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg cursor-pointer" @click="handleLogout">Logout</button>
+          <button class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg cursor-pointer" @click="openLogoutModal">Logout</button>
         </template>
         <template v-else>
           <button class="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg cursor-pointer" @click="navigate('Login')">Sign In</button>
@@ -134,4 +141,19 @@ onMounted(() => {
       </div>
     </div>
   </nav>
+
+  <AppModal :open="showLogoutModal" title="Sign Out" size="sm" @close="showLogoutModal = false">
+    <div class="flex flex-col items-center text-center">
+      <div class="w-12 h-12 bg-accent-100 rounded-full flex items-center justify-center mb-3">
+        <svg class="w-6 h-6 text-accent-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+      </div>
+      <p class="text-sm text-muted mb-5">Are you sure you want to sign out?</p>
+      <div class="flex gap-3 w-full">
+        <button class="flex-1 bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showLogoutModal = false">Cancel</button>
+        <button class="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 cursor-pointer" @click="confirmLogout">Sign Out</button>
+      </div>
+    </div>
+  </AppModal>
 </template>

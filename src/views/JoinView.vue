@@ -49,6 +49,8 @@ async function submitJoin() {
   } catch (e) {
     if (e.message.includes('already a member')) {
       status.value = 'already_member'
+    } else if (e.message.includes('mid-rotation')) {
+      status.value = 'mid_rotation'
     } else {
       error.value = e.message
       status.value = 'error'
@@ -105,6 +107,17 @@ function goAuth(routeName) {
         </div>
         <h1 class="text-xl font-bold text-slate-900 mb-1">You're Already a Member</h1>
         <p class="text-sm text-muted mb-6">You're already part of {{ groupName }}.</p>
+        <button class="bg-primary-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer" @click="router.push({ name: 'Dashboard' })">Go to Dashboard</button>
+      </template>
+
+      <template v-else-if="status === 'mid_rotation'">
+        <div class="w-12 h-12 bg-accent-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg class="w-6 h-6 text-accent-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h1 class="text-xl font-bold text-slate-900 mb-1">Group Is Mid-Rotation</h1>
+        <p class="text-sm text-muted mb-6">{{ groupName }} is currently mid-rotation. New members can join once every member has received the pot this rotation. Please check back later.</p>
         <button class="bg-primary-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer" @click="router.push({ name: 'Dashboard' })">Go to Dashboard</button>
       </template>
 

@@ -41,7 +41,9 @@ describe('contributions store', () => {
   })
 
   it('markAsPaid creates a contribution doc with a deterministic id for any eligible member', async () => {
-    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'admin-1', contributionAmount: 5000, currentCycle: 3, currentCycleRecipientId: 'user-3' }) })
+    mocks.mockGetDoc
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'admin-1', contributionAmount: 5000, currentCycle: 3, currentCycleRecipientId: 'user-3' }) })
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ userId: 'user-2', status: 'approved' }) })
     const store = useContributionsStore()
 
     const result = await store.markAsPaid('group-1', 'user-2', 3)
@@ -61,11 +63,13 @@ describe('contributions store', () => {
     expect(result.id).toBe('3_user-2')
   })
 
-  it('markAsPaid rejects when the current user is not the group admin', async () => {
-    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'someone-else', contributionAmount: 5000 }) })
+  it('markAsPaid rejects when the member is not an approved member of the group', async () => {
+    mocks.mockGetDoc
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'admin-1', contributionAmount: 5000 }) })
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ userId: 'user-2', status: 'left' }) })
     const store = useContributionsStore()
 
-    await expect(store.markAsPaid('group-1', 'user-2', 3)).rejects.toThrow('Only the group admin')
+    await expect(store.markAsPaid('group-1', 'user-2', 3)).rejects.toThrow('not an approved member')
     expect(mocks.mockSetDoc).not.toHaveBeenCalled()
   })
 

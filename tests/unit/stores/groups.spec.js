@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   mockServerTimestamp: vi.fn(() => 'TIMESTAMP'),
   mockOnSnapshot: vi.fn(),
   mockArrayUnion: vi.fn((value) => ({ type: 'arrayUnion', value })),
+  mockArrayRemove: vi.fn((value) => ({ type: 'arrayRemove', value })),
 }))
 
 vi.mock('@/firebase', () => ({
@@ -36,6 +37,7 @@ vi.mock('firebase/firestore', () => ({
   onSnapshot: mocks.mockOnSnapshot,
   serverTimestamp: mocks.mockServerTimestamp,
   arrayUnion: mocks.mockArrayUnion,
+  arrayRemove: mocks.mockArrayRemove,
 }))
 
 import { useGroupsStore } from '@/stores/groups'
@@ -62,12 +64,14 @@ describe('groups store', () => {
 
     expect(id).toBe('group-1')
     expect(mocks.mockAddDoc).toHaveBeenCalledTimes(1)
-    expect(mocks.mockSetDoc).toHaveBeenCalledTimes(1)
+    expect(mocks.mockSetDoc).toHaveBeenCalledTimes(2)
     const memberDoc = mocks.mockSetDoc.mock.calls[0][1]
     expect(memberDoc.rotationOrder).toBe(1)
     expect(memberDoc.status).toBe('approved')
     expect(memberDoc.hasReceived).toBe(false)
     expect(memberDoc.joinedCycle).toBe(1)
+    const userDoc = mocks.mockSetDoc.mock.calls[1][1]
+    expect(userDoc.memberGroupIds).toEqual({ type: 'arrayUnion', value: 'group-1' })
   })
 
   it('createGroup rejects an empty start date', async () => {
@@ -93,6 +97,68 @@ describe('groups store', () => {
     await expect(store.joinGroupByInvite('bad-code', 'user-2', 'Amara', 'a@t.com')).rejects.toThrow(
       'Invalid invite link',
     )
+  })
+
+  it('joinGroupByInvite rejects a member whose previous request was declined', async () => {
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [{ id: 'g1', data: () => ({ inviteCode: 'code1', adminId: 'admin-1' }) }],
+    })
+    mocks.mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ userId: 'user-2', status: 'rejected' }),
+    })
+    const store = useGroupsStore()
+
+    await expect(store.joinGroupByInvite('code1', 'user-2', 'Amara', 'a@t.com')).rejects.toThrow(
+      'request to join this group was declined',
+    )
+    expect(mocks.mockSetDoc).not.toHaveBeenCalled()
+  })
+
+  it('joinGroupByInvite blocks new joiners while a rotation is mid-cycle', async () => {
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [{ id: 'g1', data: () => ({ inviteCode: 'code1', adminId: 'admin-1', currentCycleRecipientId: 'member-3' }) }],
+    })
+    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => false })
+    const store = useGroupsStore()
+
+    await expect(store.joinGroupByInvite('code1', 'user-2', 'Amara', 'a@t.com')).rejects.toThrow(
+      'mid-rotation',
+    )
+    expect(mocks.mockSetDoc).not.toHaveBeenCalled()
+  })
+
+  it('startNewCycle throws when the group has no eligible members', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ currentCycle: 0, currentCycleRecipientId: null, rotation: 0 }),
+    })
+    mocks.mockGetDocs.mockResolvedValueOnce({ docs: [] })
+    const store = useGroupsStore()
+
+    await expect(store.startNewCycle('group-1')).rejects.toThrow('no eligible members')
+    expect(mocks.mockUpdateDoc).not.toHaveBeenCalled()
+  })
+
+  it('removeMember cleans up the removed user membership list', async () => {
+    mocks.mockGetDoc
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', totalMembers: 3 }) })
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ userId: 'user-2', status: 'approved' }) })
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'user-1', data: () => ({ userId: 'user-1', status: 'approved', rotationOrder: 1 }) },
+        { id: 'user-3', data: () => ({ userId: 'user-3', status: 'approved', rotationOrder: 2 }) },
+      ],
+    })
+    const store = useGroupsStore()
+
+    await store.removeMember('group-1', 'user-2')
+
+    const userDocUpdate = mocks.mockUpdateDoc.mock.calls.find(
+      ([docRef]) => docRef.args[1] === 'users',
+    )
+    expect(userDocUpdate).toBeTruthy()
+    expect(userDocUpdate[1].memberGroupIds).toEqual({ type: 'arrayRemove', value: 'group-1' })
   })
 
   it('subscribeToGroup returns a cleanup function that unsubscribes both listeners', () => {
