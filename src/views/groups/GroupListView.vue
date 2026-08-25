@@ -5,6 +5,7 @@ import { useGroupsStore } from '@/stores/groups'
 import { useToast } from '@/composables/useToast'
 import AppLoader from '@/components/common/AppLoader.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import { formatNaira } from '@/utils/format'
 
 const router = useRouter()
 const groupsStore = useGroupsStore()
@@ -14,10 +15,6 @@ const tab = ref('member')
 
 const memberGroups = computed(() => groupsStore.groups.filter((g) => g.role === 'member'))
 const adminGroups = computed(() => groupsStore.groups.filter((g) => g.role === 'admin'))
-
-function formatAmount(amount) {
-  return '₦' + Number(amount || 0).toLocaleString()
-}
 
 function openGroup(g) {
   if (g.membershipStatus === 'pending') {
@@ -71,7 +68,7 @@ onMounted(() => {
           </div>
           <div class="text-right">
             <p class="text-sm font-medium">Cycle {{ g.currentCycle }}</p>
-            <p class="text-sm text-muted">{{ formatAmount(g.contributionAmount) }}/ea</p>
+            <p class="text-sm text-muted">{{ formatNaira(g.contributionAmount) }}/ea</p>
           </div>
         </div>
       </template>
@@ -93,7 +90,7 @@ onMounted(() => {
           </div>
           <div class="text-right">
             <p class="text-sm font-medium">Cycle {{ g.currentCycle }}</p>
-            <p class="text-sm text-muted">{{ formatAmount(g.contributionAmount) }}/ea</p>
+            <p class="text-sm text-muted">{{ formatNaira(g.contributionAmount) }}/ea</p>
           </div>
         </div>
       </template>

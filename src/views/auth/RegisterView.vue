@@ -30,6 +30,11 @@ async function handleRegister() {
   loading.value = true
   try {
     await authStore.register(email.value, password.value, name.value)
+    try {
+      await authStore.sendVerificationEmail()
+    } catch {
+      // Verification email is best-effort; the account is still created
+    }
     if (inviteCode) {
       router.push({ name: 'Join', query: { invite: inviteCode } })
     } else {

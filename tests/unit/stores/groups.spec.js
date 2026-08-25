@@ -266,6 +266,96 @@ describe('groups store', () => {
     expect(groupUpdate.currentCycleRecipientId).toBe('b')
   })
 
+  it('moveMemberRotation swaps rotation order with the neighbor when moving up', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 0 }) })
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'a', data: () => ({ status: 'approved', rotationOrder: 1 }) },
+        { id: 'b', data: () => ({ status: 'approved', rotationOrder: 2 }) },
+        { id: 'c', data: () => ({ status: 'approved', rotationOrder: 3 }) },
+      ],
+    })
+    const store = useGroupsStore()
+
+    await store.moveMemberRotation('group-1', 'c', 'up')
+
+    expect(mocks.mockUpdateDoc).toHaveBeenCalledTimes(2)
+    const first = mocks.mockUpdateDoc.mock.calls[0]
+    expect(first[0].args[4]).toBe('c')
+    expect(first[1]).toEqual({ rotationOrder: 2 })
+    const second = mocks.mockUpdateDoc.mock.calls[1]
+    expect(second[0].args[4]).toBe('b')
+    expect(second[1]).toEqual({ rotationOrder: 3 })
+  })
+
+  it('moveMemberRotation swaps rotation order when moving down', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 0 }) })
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'a', data: () => ({ status: 'approved', rotationOrder: 1 }) },
+        { id: 'b', data: () => ({ status: 'approved', rotationOrder: 2 }) },
+        { id: 'c', data: () => ({ status: 'approved', rotationOrder: 3 }) },
+      ],
+    })
+    const store = useGroupsStore()
+
+    await store.moveMemberRotation('group-1', 'a', 'down')
+
+    const first = mocks.mockUpdateDoc.mock.calls[0]
+    expect(first[0].args[4]).toBe('a')
+    expect(first[1]).toEqual({ rotationOrder: 2 })
+    const second = mocks.mockUpdateDoc.mock.calls[1]
+    expect(second[0].args[4]).toBe('b')
+    expect(second[1]).toEqual({ rotationOrder: 1 })
+  })
+
+  it('moveMemberRotation does nothing at the rotation boundaries', async () => {
+    mocks.mockGetDoc.mockResolvedValue({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 0 }) })
+    mocks.mockGetDocs.mockResolvedValue({
+      docs: [
+        { id: 'a', data: () => ({ status: 'approved', rotationOrder: 1 }) },
+        { id: 'b', data: () => ({ status: 'approved', rotationOrder: 2 }) },
+      ],
+    })
+    const store = useGroupsStore()
+
+    await store.moveMemberRotation('group-1', 'a', 'up')
+    await store.moveMemberRotation('group-1', 'b', 'down')
+
+    expect(mocks.mockUpdateDoc).not.toHaveBeenCalled()
+  })
+
+  it('moveMemberRotation rejects mid-rotation reordering', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 2 }) })
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'a', data: () => ({ status: 'approved', rotationOrder: 1, joinedCycle: 1, hasReceived: true }) },
+        { id: 'b', data: () => ({ status: 'approved', rotationOrder: 2, joinedCycle: 1, hasReceived: false }) },
+      ],
+    })
+    const store = useGroupsStore()
+
+    await expect(store.moveMemberRotation('group-1', 'b', 'up')).rejects.toThrow(
+      'rotation order can only be changed',
+    )
+    expect(mocks.mockUpdateDoc).not.toHaveBeenCalled()
+  })
+
+  it('moveMemberRotation is allowed when the rotation has concluded', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 3 }) })
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'a', data: () => ({ status: 'approved', rotationOrder: 1, joinedCycle: 1, hasReceived: true }) },
+        { id: 'b', data: () => ({ status: 'approved', rotationOrder: 2, joinedCycle: 1, hasReceived: true }) },
+      ],
+    })
+    const store = useGroupsStore()
+
+    await store.moveMemberRotation('group-1', 'b', 'up')
+
+    expect(mocks.mockUpdateDoc).toHaveBeenCalledTimes(2)
+  })
+
   it('fetchUserGroups surfaces membership status on member groups', async () => {
     mocks.mockGetDocs.mockResolvedValueOnce({ docs: [] })
     mocks.mockGetDoc

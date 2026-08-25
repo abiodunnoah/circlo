@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   mockGetDoc: vi.fn(),
   mockSetDoc: vi.fn(),
   mockUpdateDoc: vi.fn(),
+  mockAddDoc: vi.fn(),
   mockQuery: vi.fn((...args) => ({ type: 'query', args })),
   mockWhere: vi.fn((...args) => ({ type: 'where', args })),
   mockCollection: vi.fn((...args) => ({ type: 'collection', args })),
@@ -24,6 +25,7 @@ vi.mock('firebase/firestore', () => ({
   getDoc: mocks.mockGetDoc,
   setDoc: mocks.mockSetDoc,
   updateDoc: mocks.mockUpdateDoc,
+  addDoc: mocks.mockAddDoc,
   query: mocks.mockQuery,
   where: mocks.mockWhere,
   collection: mocks.mockCollection,
@@ -61,6 +63,15 @@ describe('contributions store', () => {
 
     expect(mocks.mockUpdateDoc).not.toHaveBeenCalled()
     expect(result.id).toBe('3_user-2')
+
+    const addDocCall = mocks.mockAddDoc.mock.calls[0]
+    expect(addDocCall[0].args).toContain('notifications')
+    expect(addDocCall[1]).toMatchObject({
+      userId: 'user-2',
+      groupId: 'group-1',
+      type: 'paid',
+      read: false,
+    })
   })
 
   it('markAsPaid rejects when the member is not an approved member of the group', async () => {
@@ -92,6 +103,33 @@ describe('contributions store', () => {
     const store = useContributionsStore()
 
     await expect(store.confirmPayout('group-1', 'user-9', 3)).rejects.toThrow('current cycle recipient')
+    expect(mocks.mockUpdateDoc).not.toHaveBeenCalled()
+  })
+
+  it('undoPayout resets the recipient received status', async () => {
+    mocks.mockGetDoc
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'admin-1', currentCycle: 3, currentCycleRecipientId: 'user-2' }) })
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ userId: 'user-2', status: 'approved' }) })
+    const store = useContributionsStore()
+
+    await store.undoPayout('group-1', 'user-2', 3)
+
+    expect(mocks.mockUpdateDoc).toHaveBeenCalledWith(expect.anything(), { hasReceived: false })
+  })
+
+  it('undoPayout rejects when the member is not the current cycle recipient', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'admin-1', currentCycle: 3, currentCycleRecipientId: 'user-2' }) })
+    const store = useContributionsStore()
+
+    await expect(store.undoPayout('group-1', 'user-9', 3)).rejects.toThrow('current cycle recipient')
+    expect(mocks.mockUpdateDoc).not.toHaveBeenCalled()
+  })
+
+  it('undoPayout rejects when the cycle does not match', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'admin-1', currentCycle: 3, currentCycleRecipientId: 'user-2' }) })
+    const store = useContributionsStore()
+
+    await expect(store.undoPayout('group-1', 'user-2', 2)).rejects.toThrow('current cycle')
     expect(mocks.mockUpdateDoc).not.toHaveBeenCalled()
   })
 

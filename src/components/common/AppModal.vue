@@ -1,19 +1,49 @@
 <script setup>
-defineProps({
+import { ref, watch, onBeforeUnmount } from 'vue'
+
+const props = defineProps({
   open: Boolean,
   title: String,
   size: { type: String, default: 'md' },
 })
 
 defineEmits(['close'])
+
+const dialogRef = ref(null)
+let previouslyFocused = null
+
+watch(
+  () => props.open,
+  (open) => {
+    if (open) {
+      previouslyFocused = document.activeElement
+      requestAnimationFrame(() => dialogRef.value?.focus())
+    } else if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+      previouslyFocused.focus()
+      previouslyFocused = null
+    }
+  },
+)
+
+onBeforeUnmount(() => {
+  if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+    previouslyFocused.focus()
+    previouslyFocused = null
+  }
+})
 </script>
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="fixed inset-0 z-40 flex items-center justify-center p-4">
+    <div v-if="open" class="fixed inset-0 z-40 flex items-center justify-center p-4" @keydown.esc="$emit('close')">
       <div class="fixed inset-0 bg-black/40 transition-opacity" @click="$emit('close')" />
       <div
-        class="relative bg-white rounded-xl shadow-xl w-full animate-modal-in overflow-y-auto max-h-[90vh]"
+        ref="dialogRef"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="title"
+        tabindex="-1"
+        class="relative bg-white rounded-xl shadow-xl w-full animate-modal-in overflow-y-auto max-h-[90vh] outline-none"
         :class="{
           'max-w-sm': size === 'sm',
           'max-w-lg': size === 'md',

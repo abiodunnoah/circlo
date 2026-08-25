@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGroupsStore } from '@/stores/groups'
@@ -8,12 +8,42 @@ import { useToast } from '@/composables/useToast'
 import AppCard from '@/components/common/AppCard.vue'
 import AppLoader from '@/components/common/AppLoader.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import { formatNaira } from '@/utils/format'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const groupsStore = useGroupsStore()
 const contributionsStore = useContributionsStore()
 const toast = useToast()
+
+const resending = ref(false)
+
+const needsVerification = computed(() => !!authStore.user && !authStore.user.emailVerified)
+
+async function resendVerification() {
+  resending.value = true
+  try {
+    await authStore.sendVerificationEmail()
+    toast.show('Verification email sent', 'success')
+  } catch (e) {
+    toast.show(e.message, 'error')
+  } finally {
+    resending.value = false
+  }
+}
+
+async function checkVerification() {
+  try {
+    await authStore.refreshUser()
+    if (authStore.user?.emailVerified) {
+      toast.show('Email verified', 'success')
+    } else {
+      toast.show('Email not verified yet. Check your inbox.', 'info')
+    }
+  } catch (e) {
+    toast.show(e.message, 'error')
+  }
+}
 
 const groups = computed(() => groupsStore.groups)
 
@@ -38,10 +68,6 @@ const pendingCount = computed(() => {
 
 const isAdminOfAnyGroup = computed(() => groups.value.some((g) => g.role === 'admin'))
 
-function formatNaira(amount) {
-  return '₦' + Number(amount || 0).toLocaleString()
-}
-
 onMounted(() => {
   groupsStore.fetchUserGroups()
   contributionsStore.fetchMyContributions()
@@ -51,6 +77,17 @@ onMounted(() => {
 <template>
   <div class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
     <h1 class="text-2xl font-bold text-slate-900 mb-6">Welcome back{{ authStore.user?.displayName ? ', ' + authStore.user.displayName.split(' ')[0] : '' }}</h1>
+
+    <div v-if="needsVerification" class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div>
+        <p class="text-sm font-medium text-amber-900 mb-0.5">Verify your email address</p>
+        <p class="text-sm text-amber-800">Check your inbox for a verification link so you never miss an update.</p>
+      </div>
+      <div class="flex gap-2 shrink-0">
+        <button class="text-sm font-medium text-amber-900 underline hover:text-amber-950 cursor-pointer disabled:opacity-50" :disabled="resending" @click="resendVerification">{{ resending ? 'Sending...' : 'Resend email' }}</button>
+        <button class="bg-white border border-amber-300 text-amber-900 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-100 cursor-pointer" @click="checkVerification">I've verified</button>
+      </div>
+    </div>
 
     <div v-if="groupsStore.loading" class="bg-white rounded-xl border border-slate-200 shadow-sm">
       <AppLoader text="Loading your groups..." />

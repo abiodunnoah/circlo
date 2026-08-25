@@ -69,6 +69,11 @@ async function handleLogin() {
       </form>
 
       <p class="text-center text-sm text-muted mt-4">
+        Forgot your password?
+        <button class="text-primary-600 font-medium hover:text-primary-700 cursor-pointer" @click="router.push({ name: 'ForgotPassword', query: route.query })">Reset it here</button>
+      </p>
+
+      <p class="text-center text-sm text-muted mt-2">
         Don't have an account?
         <button class="text-primary-600 font-medium hover:text-primary-700 cursor-pointer" @click="router.push({ name: 'Register', query: route.query })">Create one</button>
       </p>

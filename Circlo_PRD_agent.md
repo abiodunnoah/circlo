@@ -146,7 +146,9 @@ Step 7 → On approval: member sees the group in their dashboard immediately
 - Contribution marked as paid → notify the member
 - It is your turn to receive the pot → notify the member
 - New cycle started → notify all group members
-- Dedicated Notifications page with read/unread states
+- Join request approved → notify the member
+- Dedicated Notifications page with read/unread states (unread badge in the navbar)
+- Admin-only writes via `createNotification`; rules restrict to admin-of-group or self
 
 ### 5.10 Reports
 - Per-group contribution summary by cycle
@@ -254,11 +256,23 @@ Contribution doc ids are deterministic (`{cycle}_{userId}`) so double-clicks can
 ```
 userId      string
 groupId     string
-type        "paid" | "your_turn" | "new_cycle"
+type        "paid" | "your_turn" | "new_cycle" | "approved"
 message     string
 read        boolean
 createdAt   timestamp
 ```
+
+### `groups/{groupId}/cycles/{cycle}` (added Phase 4)
+```
+cycle          number — cycle number within the current rotation
+recipientId    string — member id who receives the pot this cycle
+recipientName  string — displayName snapshotted for history
+rotation       number — rotation this cycle belonged to
+startedAt      timestamp — when the cycle started
+receivedAt     timestamp — set when the payout is confirmed (added on confirmPayout, merge-safe)
+receivedBy     string — adminId that confirmed the payout
+```
+One doc per cycle, written in `startNewCycle`; `receivedAt`/`receivedBy` stamped in `confirmPayout` via `setDoc(..., { merge: true })`. This powers rotation history in Reports.
 
 ---
 

@@ -1,14 +1,16 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGroupsStore } from '@/stores/groups'
+import { useNotificationsStore } from '@/stores/notifications'
 import AppModal from '@/components/common/AppModal.vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const groupsStore = useGroupsStore()
+const notificationsStore = useNotificationsStore()
 
 const mobileOpen = ref(false)
 const showLogoutModal = ref(false)
@@ -31,9 +33,17 @@ const navItems = computed(() => {
   }
   items.push(
     { label: 'My Contributions', name: 'Contributions', routeNames: ['Contributions'] },
-    { label: 'Notifications', name: 'Notifications', routeNames: ['Notifications'] },
+    {
+      label: 'Notifications',
+      name: 'Notifications',
+      routeNames: ['Notifications'],
+      badge: computed(() => notificationsStore.unreadCount),
+    },
     { label: 'Profile', name: 'Profile', routeNames: ['Profile'] },
   )
+  if (isAdminOfAnyGroup.value) {
+    items.push({ label: 'Reports', name: 'Reports', routeNames: ['Reports'] })
+  }
   return items
 })
 
@@ -69,6 +79,11 @@ watch(isAdminOfAnyGroup, (value) => {
 
 onMounted(() => {
   refreshRequestCount()
+  notificationsStore.subscribeNotifications()
+})
+
+onUnmounted(() => {
+  notificationsStore.unsubscribeNotifications()
 })
 </script>
 

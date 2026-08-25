@@ -42,9 +42,9 @@
 - [ ] Each group card shows the next payout recipient
 
 ## Notifications on Events (Phase 4 wiring)
-- [ ] Contribution marked as paid → notify the member (deferred)
-- [ ] New cycle started → all members notified (deferred)
+- [x] Contribution marked as paid → notify the member (verified in Phase 4)
+- [x] New cycle started → all members notified (verified in Phase 4)
 
 ## Reports
-- [ ] Reports page shows group + cycle filters (Phase 4 wiring)
-- [ ] PDF export produces a readable document (Phase 4 wiring)
+- [x] Reports page shows group + cycle filters (verified in Phase 4)
+- [x] PDF export produces a readable document (verified in Phase 4)

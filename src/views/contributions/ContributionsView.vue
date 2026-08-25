@@ -5,13 +5,10 @@ import { useContributionsStore } from '@/stores/contributions'
 import AppLoader from '@/components/common/AppLoader.vue'
 import AppBadge from '@/components/common/AppBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import { formatNaira } from '@/utils/format'
 
 const router = useRouter()
 const contributionsStore = useContributionsStore()
-
-function formatNaira(amount) {
-  return '₦' + Number(amount || 0).toLocaleString()
-}
 
 function formatDate(value) {
   if (!value) return '—'

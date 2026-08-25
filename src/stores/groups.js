@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { db, auth } from '@/firebase'
 import { collection, doc, query, where, getDocs, getDoc, addDoc, updateDoc, setDoc, onSnapshot, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore'
+import { createNotification } from '@/stores/notifications'
 
 function generateInviteCode() {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
@@ -307,6 +308,13 @@ export const useGroupsStore = defineStore('groups', () => {
     const totalMembers = (groupData.totalMembers || 0) + 1
     const pendingCount = Math.max(0, (groupData.pendingCount || 0) - 1)
     await updateDoc(doc(db, 'groups', groupId), { totalMembers, pendingCount })
+
+    await createNotification({
+      userId: memberId,
+      groupId,
+      type: 'approved',
+      message: `You were approved to join ${groupData.name || 'your group'}.`,
+    })
   }
 
   async function rejectMember(groupId, memberId) {
@@ -357,6 +365,47 @@ export const useGroupsStore = defineStore('groups', () => {
     }
   }
 
+  async function moveMemberRotation(groupId, memberId, direction) {
+    const groupDoc = await getDoc(doc(db, 'groups', groupId))
+    if (!groupDoc.exists()) throw new Error('Group not found')
+
+    const groupData = groupDoc.data()
+    const adminId = auth.currentUser?.uid
+    if (groupData.adminId !== adminId) throw new Error('Only the group admin can reorder members')
+
+    const membersSnapshot = await getDocs(collection(db, 'groups', groupId, 'members'))
+    const approved = membersSnapshot.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((m) => m.status === 'approved' && !m.leftAt)
+      .sort((a, b) => a.rotationOrder - b.rotationOrder)
+
+    const currentCycle = groupData.currentCycle || 0
+    if (currentCycle !== 0) {
+      const eligible = approved.filter((m) => (m.joinedCycle ?? 1) <= Math.max(currentCycle, 1))
+      const rotationConcluded = eligible.length > 0 && eligible.every((m) => m.hasReceived)
+      if (!rotationConcluded) {
+        throw new Error(
+          'The rotation order can only be changed before the first cycle or after every member has received the pot.',
+        )
+      }
+    }
+
+    const index = approved.findIndex((m) => m.id === memberId)
+    if (index === -1) return
+
+    const swapIndex = direction === 'up' ? index - 1 : index + 1
+    if (swapIndex < 0 || swapIndex >= approved.length) return
+
+    const member = approved[index]
+    const neighbor = approved[swapIndex]
+    await updateDoc(doc(db, 'groups', groupId, 'members', member.id), {
+      rotationOrder: neighbor.rotationOrder,
+    })
+    await updateDoc(doc(db, 'groups', groupId, 'members', neighbor.id), {
+      rotationOrder: member.rotationOrder,
+    })
+  }
+
   async function startNewCycle(groupId) {
     const groupRef = doc(db, 'groups', groupId)
     const groupDoc = await getDoc(groupRef)
@@ -399,12 +448,41 @@ export const useGroupsStore = defineStore('groups', () => {
       .filter((m) => !m.hasReceived)
       .sort((a, b) => a.rotationOrder - b.rotationOrder)
 
+    const recipient = nextEligible[0] || null
+    const newRotation = (groupData.rotation || 1) + (rotationConcluded ? 1 : 0)
+
     await updateDoc(groupRef, {
       currentCycle: newCycle,
       currentCycleStartDate: new Date(),
-      rotation: (groupData.rotation || 1) + (rotationConcluded ? 1 : 0),
-      currentCycleRecipientId: nextEligible[0]?.id || null,
+      rotation: newRotation,
+      currentCycleRecipientId: recipient?.id || null,
     })
+
+    if (recipient) {
+      await setDoc(doc(db, 'groups', groupId, 'cycles', String(newCycle)), {
+        cycle: newCycle,
+        recipientId: recipient.id,
+        recipientName: recipient.displayName || recipient.id,
+        rotation: newRotation,
+        startedAt: new Date(),
+      })
+
+      await createNotification({
+        userId: recipient.id,
+        groupId,
+        type: 'your_turn',
+        message: `You are next to receive the pot in ${groupData.name || 'your group'}.`,
+      })
+    }
+
+    for (const m of eligible) {
+      await createNotification({
+        userId: m.id,
+        groupId,
+        type: 'new_cycle',
+        message: `Cycle ${newCycle} has started for ${groupData.name || 'your group'}.`,
+      })
+    }
   }
 
   async function syncMemberDisplayName(uid, displayName) {
@@ -503,6 +581,7 @@ export const useGroupsStore = defineStore('groups', () => {
     approveMember,
     rejectMember,
     removeMember,
+    moveMemberRotation,
     startNewCycle,
     syncMemberDisplayName,
     fetchPendingRequests,

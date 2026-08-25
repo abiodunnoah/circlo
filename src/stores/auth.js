@@ -7,6 +7,9 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   updateProfile,
+  sendPasswordResetEmail,
+  sendEmailVerification,
+  reload,
 } from 'firebase/auth'
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { useGroupsStore } from '@/stores/groups'
@@ -78,6 +81,24 @@ export const useAuthStore = defineStore('auth', () => {
     profileVersion.value += 1
   }
 
+  async function sendPasswordReset(email) {
+    await sendPasswordResetEmail(auth, email)
+  }
+
+  async function sendVerificationEmail() {
+    const current = auth.currentUser
+    if (!current) throw new Error('You must be signed in to verify your email')
+    await sendEmailVerification(current)
+  }
+
+  async function refreshUser() {
+    const current = auth.currentUser
+    if (!current) return
+    await reload(current)
+    user.value = auth.currentUser
+    profileVersion.value += 1
+  }
+
   return {
     user,
     loading,
@@ -90,5 +111,8 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     logout,
     updateDisplayName,
+    sendPasswordReset,
+    sendVerificationEmail,
+    refreshUser,
   }
 })

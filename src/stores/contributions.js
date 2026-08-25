@@ -2,6 +2,7 @@ import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { db, auth } from '@/firebase'
 import { collection, doc, query, where, getDoc, getDocs, setDoc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore'
+import { createNotification } from '@/stores/notifications'
 
 function toTime(value) {
   if (!value) return 0
@@ -92,6 +93,13 @@ export const useContributionsStore = defineStore('contributions', () => {
       status: 'paid',
     })
 
+    await createNotification({
+      userId,
+      groupId,
+      type: 'paid',
+      message: `Your contribution for Cycle ${cycle} was marked as paid.`,
+    })
+
     return { id: docId, userId, cycle, amount, markedBy: adminId, status: 'paid' }
   }
 
@@ -116,6 +124,34 @@ export const useContributionsStore = defineStore('contributions', () => {
     if (!memberDoc.exists()) throw new Error('Member not found')
 
     await updateDoc(memberRef, { hasReceived: true })
+
+    await setDoc(doc(db, 'groups', groupId, 'cycles', String(cycle)), {
+      receivedAt: serverTimestamp(),
+      receivedBy: memberId,
+    }, { merge: true })
+  }
+
+  async function undoPayout(groupId, memberId, cycle) {
+    const adminId = auth.currentUser?.uid
+    if (!adminId) throw new Error('You must be signed in to do this')
+
+    const groupDoc = await getDoc(doc(db, 'groups', groupId))
+    if (!groupDoc.exists()) throw new Error('Group not found')
+    const groupData = groupDoc.data()
+    if (groupData.adminId !== adminId) throw new Error('Only the group admin can undo payouts')
+
+    if (Number(groupData.currentCycle || 0) !== cycle) {
+      throw new Error('A payout can only be undone for the current cycle')
+    }
+    if (groupData.currentCycleRecipientId !== memberId) {
+      throw new Error('Only the current cycle recipient payout can be undone')
+    }
+
+    const memberRef = doc(db, 'groups', groupId, 'members', memberId)
+    const memberDoc = await getDoc(memberRef)
+    if (!memberDoc.exists()) throw new Error('Member not found')
+
+    await updateDoc(memberRef, { hasReceived: false })
   }
 
   async function voidContribution(groupId, userId, cycle) {
@@ -219,6 +255,7 @@ export const useContributionsStore = defineStore('contributions', () => {
     subscribeToCycleContributions,
     markAsPaid,
     confirmPayout,
+    undoPayout,
     voidContribution,
     fetchMyContributions,
   }

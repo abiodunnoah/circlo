@@ -1,0 +1,95 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return request.auth.uid == uid;
+    }
+
+    function groupDoc(groupId) {
+      return get(/databases/$(database)/documents/groups/$(groupId));
+    }
+
+    function memberStatus(groupId, uid) {
+      let path = /databases/$(database)/documents/groups/$(groupId)/members/$(uid);
+      return exists(path) ? get(path).data.status : null;
+    }
+
+    function isAdminOf(groupId) {
+      return isSignedIn()
+        && groupDoc(groupId).data.adminId == request.auth.uid;
+    }
+
+    function isGroupMember(groupId) {
+      return isSignedIn()
+        && memberStatus(groupId, request.auth.uid) in ['approved', 'pending'];
+    }
+
+    function canReadGroup(groupId) {
+      return isAdminOf(groupId) || isGroupMember(groupId);
+    }
+
+    // users/{uid} — users manage only their own profile
+    match /users/{uid} {
+      allow read, update, delete: if isSelf(uid);
+      allow create: if isSelf(uid);
+    }
+
+    // groups — members/admin can read; only the admin writes; creation is open to signed-in users
+    match /groups/{groupId} {
+      allow read: if canReadGroup(groupId);
+      allow create: if isSignedIn();
+      allow update: if isAdminOf(groupId)
+        || (
+          isSignedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendingCount'])
+          && request.resource.data.pendingCount == resource.data.pendingCount + 1
+          && memberStatus(groupId, request.auth.uid) == 'pending'
+        );
+      allow delete: if false;
+
+      match /members/{memberId} {
+        allow read: if canReadGroup(groupId);
+        // members may submit a pending self-join request via an invite link
+        allow create: if isAdminOf(groupId)
+          || (
+            isSignedIn()
+            && memberId == request.auth.uid
+            && request.resource.data.userId == request.auth.uid
+            && request.resource.data.status == 'pending'
+          );
+        allow update: if isAdminOf(groupId);
+        allow delete: if false;
+      }
+
+      match /contributions/{contributionId} {
+        allow read: if canReadGroup(groupId);
+        allow create, update: if isAdminOf(groupId);
+        allow delete: if false;
+      }
+
+      match /cycles/{cycleId} {
+        allow read: if canReadGroup(groupId);
+        allow create, update: if isAdminOf(groupId);
+        allow delete: if false;
+      }
+    }
+
+    // notifications — users read/update their own; admins may create for their groups
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.type in ['paid', 'your_turn', 'new_cycle', 'approved']
+        && (
+          request.resource.data.userId == request.auth.uid
+          || isAdminOf(request.resource.data.groupId)
+        );
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+  }
+}
