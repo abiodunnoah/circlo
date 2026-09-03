@@ -1,9 +1,9 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGroupsStore } from '@/stores/groups'
 import { useToast } from '@/composables/useToast'
-import AppLoader from '@/components/common/AppLoader.vue'
+import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import { formatNaira } from '@/utils/format'
 
@@ -28,9 +28,6 @@ function openGroup(g) {
   router.push({ name: 'GroupDetail', params: { id: g.id } })
 }
 
-onMounted(() => {
-  groupsStore.fetchUserGroups()
-})
 </script>
 
 <template>
@@ -45,14 +42,23 @@ onMounted(() => {
       <button class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer" :class="tab === 'admin' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'" @click="tab = 'admin'">Admin</button>
     </div>
 
-    <div v-if="groupsStore.loading" class="bg-white rounded-xl border border-slate-200 shadow-sm">
-      <AppLoader text="Loading groups..." />
+    <div v-if="groupsStore.loading" aria-label="Loading..." aria-busy="true" class="space-y-3">
+      <div v-for="i in 5" :key="i" class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between">
+        <div>
+          <AppSkeleton class="h-4 w-40 mb-2" />
+          <AppSkeleton class="h-3 w-32" />
+        </div>
+        <div class="text-right">
+          <AppSkeleton class="h-4 w-16 mb-2 ml-auto" />
+          <AppSkeleton class="h-3 w-20 ml-auto" />
+        </div>
+      </div>
     </div>
 
     <div v-else-if="groupsStore.error && !groupsStore.groups.length" class="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
       <p class="text-sm font-medium text-red-800 mb-1">Couldn't load your groups</p>
       <p class="text-sm text-red-700 mb-2">{{ groupsStore.error }}</p>
-      <button class="text-sm font-medium text-red-700 underline cursor-pointer" @click="groupsStore.fetchUserGroups()">Try again</button>
+      <button class="text-sm font-medium text-red-700 underline cursor-pointer" @click="groupsStore.unsubscribeUserGroups(); groupsStore.subscribeUserGroups()">Try again</button>
     </div>
 
     <div v-else-if="tab === 'member'" class="space-y-3">

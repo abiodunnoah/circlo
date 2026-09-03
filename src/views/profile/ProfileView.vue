@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGroupsStore } from '@/stores/groups'
 import { useToast } from '@/composables/useToast'
-import AppLoader from '@/components/common/AppLoader.vue'
+import AppSkeleton from '@/components/common/AppSkeleton.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -120,7 +120,12 @@ onMounted(() => {
     <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
       <h2 class="font-semibold text-slate-900 mb-3">Your Groups</h2>
 
-      <AppLoader v-if="groupsStore.loading" text="Loading groups..." />
+      <div v-if="groupsStore.loading" aria-label="Loading..." aria-busy="true" class="divide-y divide-slate-100">
+        <div v-for="i in 3" :key="i" class="flex items-center justify-between py-2.5">
+          <AppSkeleton class="h-3.5 w-32" />
+          <AppSkeleton class="h-5 w-14 rounded-full" />
+        </div>
+      </div>
 
       <div v-else-if="groupsStore.groups.length" class="divide-y divide-slate-100">
         <div

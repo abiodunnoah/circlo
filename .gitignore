@@ -29,6 +29,7 @@ coverage
 .eslintcache
 
 .env
+.firebaserc
 
 # Cypress
 /cypress/videos/

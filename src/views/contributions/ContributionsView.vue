@@ -2,7 +2,7 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useContributionsStore } from '@/stores/contributions'
-import AppLoader from '@/components/common/AppLoader.vue'
+import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppBadge from '@/components/common/AppBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import { formatNaira } from '@/utils/format'
@@ -25,8 +25,19 @@ onMounted(() => {
   <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
     <h1 class="text-2xl font-bold text-slate-900 mb-6">My Contributions</h1>
 
-    <div v-if="contributionsStore.myContributionsLoading" class="bg-white rounded-xl border border-slate-200 shadow-sm">
-      <AppLoader text="Loading your contributions..." />
+    <div v-if="contributionsStore.myContributionsLoading" aria-label="Loading..." aria-busy="true">
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+        <AppSkeleton class="h-3 w-28 mb-2" />
+        <AppSkeleton class="h-7 w-20" />
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div v-for="i in 5" :key="i" class="flex items-center gap-4 px-5 py-3 border-b border-slate-100">
+          <AppSkeleton class="h-3.5 w-28" />
+          <AppSkeleton class="h-3.5 w-16" />
+          <AppSkeleton class="h-3.5 w-20" />
+          <AppSkeleton class="h-5 w-14 rounded-full" />
+        </div>
+      </div>
     </div>
 
     <template v-else>

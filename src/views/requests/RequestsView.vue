@@ -3,7 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGroupsStore } from '@/stores/groups'
 import { useToast } from '@/composables/useToast'
-import AppLoader from '@/components/common/AppLoader.vue'
+import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 
 const router = useRouter()
@@ -62,8 +62,25 @@ onMounted(() => {
       </span>
     </div>
 
-    <div v-if="groupsStore.requestsLoading" class="bg-white rounded-xl border border-slate-200 shadow-sm">
-      <AppLoader text="Loading requests..." />
+    <div v-if="groupsStore.requestsLoading" aria-label="Loading..." aria-busy="true" class="space-y-4">
+      <div v-for="i in 3" :key="i" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-slate-100 bg-slate-50">
+          <AppSkeleton class="h-4 w-32" />
+        </div>
+        <div class="divide-y divide-slate-100">
+          <div v-for="j in 2" :key="j" class="flex items-center gap-4 px-5 py-3.5">
+            <AppSkeleton circle class="h-9 w-9 shrink-0" />
+            <div class="flex-1 min-w-0">
+              <AppSkeleton class="h-3.5 w-28 mb-1.5" />
+              <AppSkeleton class="h-3 w-36" />
+            </div>
+            <div class="flex gap-2 shrink-0">
+              <AppSkeleton class="h-7 w-16 rounded-lg" />
+              <AppSkeleton class="h-7 w-16 rounded-lg" />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div v-else-if="groupsStore.requestsError" class="bg-red-50 border border-red-200 rounded-xl p-4">

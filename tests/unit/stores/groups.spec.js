@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   mockGetDocs: vi.fn(),
   mockGetDoc: vi.fn(),
   mockUpdateDoc: vi.fn(),
+  mockDeleteDoc: vi.fn(),
   mockQuery: vi.fn((...args) => ({ type: 'query', args })),
   mockWhere: vi.fn((...args) => ({ type: 'where', args })),
   mockCollection: vi.fn((...args) => ({ type: 'collection', args })),
@@ -29,6 +30,7 @@ vi.mock('firebase/firestore', () => ({
   getDocs: mocks.mockGetDocs,
   getDoc: mocks.mockGetDoc,
   updateDoc: mocks.mockUpdateDoc,
+  deleteDoc: mocks.mockDeleteDoc,
   query: mocks.mockQuery,
   where: mocks.mockWhere,
   collection: mocks.mockCollection,
@@ -45,7 +47,7 @@ import { useGroupsStore } from '@/stores/groups'
 describe('groups store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.clearAllMocks()
+    vi.resetAllMocks()
   })
 
   it('createGroup creates a group doc with the admin as first approved member', async () => {
@@ -64,13 +66,16 @@ describe('groups store', () => {
 
     expect(id).toBe('group-1')
     expect(mocks.mockAddDoc).toHaveBeenCalledTimes(1)
-    expect(mocks.mockSetDoc).toHaveBeenCalledTimes(2)
-    const memberDoc = mocks.mockSetDoc.mock.calls[0][1]
+    expect(mocks.mockSetDoc).toHaveBeenCalledTimes(3)
+    const inviteDoc = mocks.mockSetDoc.mock.calls[0][1]
+    expect(inviteDoc.groupId).toBe('group-1')
+    expect(inviteDoc.groupName).toBe('Family Savings')
+    const memberDoc = mocks.mockSetDoc.mock.calls[1][1]
     expect(memberDoc.rotationOrder).toBe(1)
     expect(memberDoc.status).toBe('approved')
     expect(memberDoc.hasReceived).toBe(false)
     expect(memberDoc.joinedCycle).toBe(1)
-    const userDoc = mocks.mockSetDoc.mock.calls[1][1]
+    const userDoc = mocks.mockSetDoc.mock.calls[2][1]
     expect(userDoc.memberGroupIds).toEqual({ type: 'arrayUnion', value: 'group-1' })
   })
 
@@ -91,7 +96,7 @@ describe('groups store', () => {
   })
 
   it('rejects an invalid invite code when joining', async () => {
-    mocks.mockGetDocs.mockResolvedValue({ empty: true, docs: [] })
+    mocks.mockGetDoc.mockResolvedValue({ exists: () => false })
     const store = useGroupsStore()
 
     await expect(store.joinGroupByInvite('bad-code', 'user-2', 'Amara', 'a@t.com')).rejects.toThrow(
@@ -100,13 +105,15 @@ describe('groups store', () => {
   })
 
   it('joinGroupByInvite rejects a member whose previous request was declined', async () => {
-    mocks.mockGetDocs.mockResolvedValueOnce({
-      docs: [{ id: 'g1', data: () => ({ inviteCode: 'code1', adminId: 'admin-1' }) }],
-    })
-    mocks.mockGetDoc.mockResolvedValueOnce({
-      exists: () => true,
-      data: () => ({ userId: 'user-2', status: 'rejected' }),
-    })
+    mocks.mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ groupId: 'g1', groupName: 'Test Group', adminId: 'admin-1' }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ userId: 'user-2', status: 'rejected' }),
+      })
     const store = useGroupsStore()
 
     await expect(store.joinGroupByInvite('code1', 'user-2', 'Amara', 'a@t.com')).rejects.toThrow(
@@ -115,17 +122,16 @@ describe('groups store', () => {
     expect(mocks.mockSetDoc).not.toHaveBeenCalled()
   })
 
-  it('joinGroupByInvite blocks new joiners while a rotation is mid-cycle', async () => {
-    mocks.mockGetDocs.mockResolvedValueOnce({
-      docs: [{ id: 'g1', data: () => ({ inviteCode: 'code1', adminId: 'admin-1', currentCycleRecipientId: 'member-3' }) }],
-    })
-    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => false })
+  it('mid-rotation joins are blocked server-side by the member-create rule', async () => {
+    mocks.mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ groupId: 'g1', groupName: 'Test Group', adminId: 'admin-1' }),
+      })
+      .mockResolvedValueOnce({ exists: () => false })
     const store = useGroupsStore()
 
-    await expect(store.joinGroupByInvite('code1', 'user-2', 'Amara', 'a@t.com')).rejects.toThrow(
-      'mid-rotation',
-    )
-    expect(mocks.mockSetDoc).not.toHaveBeenCalled()
+    await expect(store.joinGroupByInvite('code1', 'user-2', 'Amara', 'a@t.com')).rejects.toThrow()
   })
 
   it('startNewCycle throws when the group has no eligible members', async () => {
@@ -140,7 +146,7 @@ describe('groups store', () => {
     expect(mocks.mockUpdateDoc).not.toHaveBeenCalled()
   })
 
-  it('removeMember cleans up the removed user membership list', async () => {
+  it('removeMember marks member as left and decrements totalMembers', async () => {
     mocks.mockGetDoc
       .mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', totalMembers: 3 }) })
       .mockResolvedValueOnce({ exists: () => true, data: () => ({ userId: 'user-2', status: 'approved' }) })
@@ -154,11 +160,15 @@ describe('groups store', () => {
 
     await store.removeMember('group-1', 'user-2')
 
+    const memberUpdate = mocks.mockUpdateDoc.mock.calls.find(
+      ([docRef]) => docRef.args[3] === 'members',
+    )
+    expect(memberUpdate).toBeTruthy()
+    expect(memberUpdate[1].status).toBe('left')
     const userDocUpdate = mocks.mockUpdateDoc.mock.calls.find(
       ([docRef]) => docRef.args[1] === 'users',
     )
-    expect(userDocUpdate).toBeTruthy()
-    expect(userDocUpdate[1].memberGroupIds).toEqual({ type: 'arrayRemove', value: 'group-1' })
+    expect(userDocUpdate).toBeFalsy()
   })
 
   it('subscribeToGroup returns a cleanup function that unsubscribes both listeners', () => {
@@ -377,10 +387,11 @@ describe('groups store', () => {
   })
 
   it('records membership on the user doc when joining a group', async () => {
-    mocks.mockGetDocs.mockResolvedValueOnce({
-      docs: [{ id: 'g1', data: () => ({ inviteCode: 'code1', adminId: 'admin-1' }) }],
-    })
     mocks.mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ groupId: 'g1', groupName: 'Test Group', adminId: 'admin-1' }),
+      })
       .mockResolvedValueOnce({ exists: () => false })
       .mockResolvedValueOnce({ exists: () => true, data: () => ({ pendingCount: 0 }) })
     const store = useGroupsStore()

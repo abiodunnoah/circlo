@@ -3,12 +3,18 @@ import { defineStore } from 'pinia'
 import { db, auth } from '@/firebase'
 import { collection, getDoc, getDocs, doc } from 'firebase/firestore'
 
-export function buildCycleRows(cycles, contributions, members) {
+export function buildCycleRows(cycles, contributions, members, currentCycle = 0) {
   const byId = new Map(members.map((m) => [m.id, m]))
+  const cycleDocMap = new Map(cycles.map((c) => [Number(c.cycle), c]))
 
-  return cycles
-    .map((cycleDoc) => {
-      const cycle = Number(cycleDoc.cycle)
+  const cycleNumbers = new Set(cycles.map((c) => Number(c.cycle)))
+  contributions.forEach((c) => cycleNumbers.add(Number(c.cycle)))
+  if (currentCycle > 0) cycleNumbers.add(currentCycle)
+
+  return Array.from(cycleNumbers)
+    .filter((n) => Number.isFinite(n) && n > 0)
+    .map((cycle) => {
+      const cycleDoc = cycleDocMap.get(cycle) || null
       const cycleContributions = contributions.filter((c) => Number(c.cycle) === cycle)
       const paid = cycleContributions.filter((c) => c.status === 'paid')
       const expected = members.filter(
@@ -17,14 +23,15 @@ export function buildCycleRows(cycles, contributions, members) {
           !m.leftAt &&
           (m.joinedCycle ?? 1) <= cycle,
       )
-      const recipient = cycleDoc.recipientId
+      const recipient = cycleDoc?.recipientId
         ? byId.get(cycleDoc.recipientId)
         : null
       return {
         cycle,
         totalCollected: paid.reduce((sum, c) => sum + Number(c.amount || 0), 0),
-        recipientName: cycleDoc.recipientName || (recipient ? recipient.displayName : null) || '—',
-        receivedAt: cycleDoc.receivedAt || null,
+        recipientName: cycleDoc?.recipientName || (recipient ? recipient.displayName : null) || '—',
+        startedAt: cycleDoc?.startedAt || null,
+        receivedAt: cycleDoc?.receivedAt || null,
         paidCount: paid.length,
         totalCount: expected.length,
         allPaid: expected.length > 0 && paid.length >= expected.length,
@@ -72,7 +79,7 @@ export const useReportsStore = defineStore('reports', () => {
       cycles.value = cyclesSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .sort((a, b) => Number(a.cycle) - Number(b.cycle))
-      rows.value = buildCycleRows(cycles.value, contributions.value, members.value)
+      rows.value = buildCycleRows(cycles.value, contributions.value, members.value, group.value?.currentCycle || 0)
     } catch (e) {
       error.value = e.message
       throw e

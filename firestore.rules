@@ -39,8 +39,22 @@ service cloud.firestore {
       allow create: if isSelf(uid);
     }
 
+    // invites/{code} — public resolution of an invite code to a group
+    match /invites/{code} {
+      allow read: if true;
+      allow create: if isSignedIn()
+        && request.resource.data.groupId != null
+        && isAdminOf(request.resource.data.groupId);
+      allow update, delete: if isSignedIn()
+        && resource.data.groupId != null
+        && isAdminOf(resource.data.groupId);
+    }
+
     // groups — members/admin can read; only the admin writes; creation is open to signed-in users
     match /groups/{groupId} {
+      // list query: admins may list their own groups (where adminId == uid)
+      allow read: if isSignedIn() && resource.data.adminId == request.auth.uid;
+      // single-doc get: members and admins may read a specific group
       allow read: if canReadGroup(groupId);
       allow create: if isSignedIn();
       allow update: if isAdminOf(groupId)
@@ -50,10 +64,11 @@ service cloud.firestore {
           && request.resource.data.pendingCount == resource.data.pendingCount + 1
           && memberStatus(groupId, request.auth.uid) == 'pending'
         );
-      allow delete: if false;
+      allow delete: if isAdminOf(groupId);
 
       match /members/{memberId} {
-        allow read: if canReadGroup(groupId);
+        allow read: if canReadGroup(groupId)
+          || (isSignedIn() && memberId == request.auth.uid);
         // members may submit a pending self-join request via an invite link
         allow create: if isAdminOf(groupId)
           || (
@@ -61,8 +76,14 @@ service cloud.firestore {
             && memberId == request.auth.uid
             && request.resource.data.userId == request.auth.uid
             && request.resource.data.status == 'pending'
+            && groupDoc(groupId).data.get('currentCycleRecipientId', null) == null
           );
-        allow update: if isAdminOf(groupId);
+        allow update: if isAdminOf(groupId)
+          || (
+            isSignedIn()
+            && memberId == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])
+          );
         allow delete: if false;
       }
 
@@ -83,7 +104,7 @@ service cloud.firestore {
     match /notifications/{notificationId} {
       allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow create: if isSignedIn()
-        && request.resource.data.type in ['paid', 'your_turn', 'new_cycle', 'approved']
+        && request.resource.data.type in ['paid', 'your_turn', 'new_cycle', 'approved', 'reminder']
         && (
           request.resource.data.userId == request.auth.uid
           || isAdminOf(request.resource.data.groupId)

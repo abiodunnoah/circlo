@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { db, auth } from '@/firebase'
-import { collection, doc, query, where, getDocs, getDoc, addDoc, updateDoc, setDoc, onSnapshot, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore'
+import { collection, doc, query, where, getDocs, getDoc, addDoc, updateDoc, setDoc, deleteDoc, onSnapshot, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore'
 import { createNotification } from '@/stores/notifications'
 
 function generateInviteCode() {
@@ -41,6 +41,11 @@ export const useGroupsStore = defineStore('groups', () => {
   const requestsLoading = ref(false)
   const requestsError = ref(null)
 
+  let unsubUserDoc = null
+  let unsubAdminGroups = null
+  const memberListeners = ref({})
+  let isSubscribed = false
+
   function resetCurrentGroup() {
     currentGroup.value = null
     members.value = []
@@ -52,10 +57,155 @@ export const useGroupsStore = defineStore('groups', () => {
 
   function resetAll() {
     resetCurrentGroup()
+    unsubscribeUserGroups()
     groups.value = []
     pendingRequests.value = []
     requestsError.value = null
     requestsLoading.value = false
+    loading.value = false
+  }
+
+  function unsubscribeUserGroups() {
+    if (unsubUserDoc) {
+      unsubUserDoc()
+      unsubUserDoc = null
+    }
+    if (unsubAdminGroups) {
+      unsubAdminGroups()
+      unsubAdminGroups = null
+    }
+    Object.values(memberListeners.value).forEach((fn) => fn())
+    memberListeners.value = {}
+    for (const key of Object.keys(adminGroupsMap)) delete adminGroupsMap[key]
+    adminGroupIds = []
+    memberGroupIds = []
+    rebuildSeq += 1
+    isSubscribed = false
+  }
+
+  const adminGroupsMap = {}
+  let adminGroupIds = []
+  let memberGroupIds = []
+  let rebuildSeq = 0
+
+  async function subscribeUserGroups() {
+    const uid = auth.currentUser?.uid
+    if (!uid) return
+    if (isSubscribed) return
+    unsubscribeUserGroups()
+    isSubscribed = true
+    loading.value = true
+    error.value = null
+
+    unsubUserDoc = onSnapshot(
+      doc(db, 'users', uid),
+      (snap) => {
+        memberGroupIds = snap.exists() ? snap.data().memberGroupIds || [] : []
+        syncMemberListeners(memberGroupIds)
+        rebuildUserGroups()
+      },
+      (err) => {
+        error.value = err.message
+        loading.value = false
+      },
+    )
+
+    unsubAdminGroups = onSnapshot(
+      query(collection(db, 'groups'), where('adminId', '==', uid)),
+      (snapshot) => {
+        adminGroupIds = snapshot.docs.map((d) => d.id)
+        for (const key of Object.keys(adminGroupsMap)) delete adminGroupsMap[key]
+        snapshot.docs.forEach((d) => {
+          adminGroupsMap[d.id] = d.data()
+        })
+        rebuildUserGroups()
+      },
+      (err) => {
+        error.value = err.message
+        loading.value = false
+      },
+    )
+  }
+
+  function syncMemberListeners(ids) {
+    const current = memberListeners.value
+    const currentIds = new Set(Object.keys(current))
+    const newIds = new Set(ids)
+
+    for (const gId of currentIds) {
+      if (!newIds.has(gId)) {
+        current[gId]()
+        delete current[gId]
+      }
+    }
+
+    for (const gId of ids) {
+      if (!current[gId]) {
+        current[gId] = onSnapshot(doc(db, 'groups', gId, 'members', auth.currentUser?.uid), () => {
+          rebuildUserGroups()
+        })
+      }
+    }
+    memberListeners.value = { ...current }
+  }
+
+  async function rebuildUserGroups() {
+    const uid = auth.currentUser?.uid
+    if (!uid || !isSubscribed) return
+    const seq = ++rebuildSeq
+
+    const allGroups = []
+    const adminIdSet = new Set(adminGroupIds)
+
+    for (const gId of adminGroupIds) {
+      const gData = adminGroupsMap[gId] || {}
+      allGroups.push({ id: gId, ...gData, role: 'admin', membershipStatus: 'approved' })
+    }
+
+    const memberOnlyIds = memberGroupIds.filter((gId) => !adminIdSet.has(gId))
+    const memberGroupRows = await Promise.all(
+      memberOnlyIds.map(async (gId) => {
+        try {
+          const memberSnap = await getDoc(doc(db, 'groups', gId, 'members', uid)).catch(() => null)
+          if (!memberSnap || !memberSnap.exists()) return null
+          const memberData = memberSnap.data()
+          if (memberData.status === 'left' || memberData.status === 'rejected') {
+            await updateDoc(doc(db, 'users', uid), { memberGroupIds: arrayRemove(gId) }).catch(() => {})
+            return null
+          }
+          const groupSnap = await getDoc(doc(db, 'groups', gId))
+          if (!groupSnap.exists()) return null
+          return {
+            id: gId,
+            ...groupSnap.data(),
+            role: 'member',
+            membershipStatus: memberData.status,
+          }
+        } catch (e) {
+          console.error('Failed to load member group', gId, e)
+          return null
+        }
+      }),
+    )
+    for (const row of memberGroupRows) {
+      if (row) allGroups.push(row)
+    }
+
+    await Promise.all(
+      allGroups.map(async (g) => {
+        const recipientId = g.currentCycleRecipientId
+        if (!recipientId) return
+        try {
+          const recipientDoc = await getDoc(doc(db, 'groups', g.id, 'members', recipientId))
+          g.nextRecipientName = recipientDoc.exists() ? recipientDoc.data().displayName : null
+        } catch {
+          g.nextRecipientName = null
+        }
+      }),
+    )
+
+    if (seq !== rebuildSeq) return
+    groups.value = allGroups
     loading.value = false
   }
 
@@ -67,6 +217,7 @@ export const useGroupsStore = defineStore('groups', () => {
       if (isNaN(parsedStartDate.getTime())) {
         throw new Error('Please provide a valid start date')
       }
+      const inviteCode = generateInviteCode()
       const groupRef = await addDoc(collection(db, 'groups'), {
         name,
         contributionAmount: Number(amount),
@@ -75,9 +226,15 @@ export const useGroupsStore = defineStore('groups', () => {
         totalMembers: 1,
         currentCycle: 0,
         status: 'active',
-        inviteCode: generateInviteCode(),
+        inviteCode,
         adminId,
         createdAt: serverTimestamp(),
+      })
+
+      await setDoc(doc(db, 'invites', inviteCode), {
+        groupId: groupRef.id,
+        groupName: name,
+        adminId,
       })
 
       await setDoc(doc(db, 'groups', groupRef.id, 'members', adminId), {
@@ -230,28 +387,34 @@ export const useGroupsStore = defineStore('groups', () => {
   }
 
   async function getGroupByInviteCode(inviteCode) {
-    const q = query(collection(db, 'groups'), where('inviteCode', '==', inviteCode))
-    const snapshot = await getDocs(q)
-    if (snapshot.empty) return null
-    return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }
+    const inviteSnap = await getDoc(doc(db, 'invites', inviteCode))
+    if (!inviteSnap.exists()) return null
+    const data = inviteSnap.data()
+    return { id: data.groupId, name: data.groupName, adminId: data.adminId }
   }
 
   async function joinGroupByInvite(inviteCode, userId, displayName, email) {
-    const group = await getGroupByInviteCode(inviteCode)
-    if (!group) throw new Error('Invalid invite link')
-    if (group.adminId === userId) throw new Error('You are already the admin of this group')
+    const invite = await getGroupByInviteCode(inviteCode)
+    if (!invite) throw new Error('Invalid invite link')
+    if (invite.adminId === userId) throw new Error('You are already the admin of this group')
+    const groupId = invite.id
 
-    const memberRef = doc(db, 'groups', group.id, 'members', userId)
-    const memberDoc = await getDoc(memberRef)
-    if (memberDoc.exists()) {
-      const existing = memberDoc.data()
+    let existing = null
+    try {
+      const memberSnap = await getDoc(doc(db, 'groups', groupId, 'members', userId))
+      if (memberSnap.exists()) existing = memberSnap.data()
+    } catch {
+      /* permission denied → not yet a member; proceed */
+    }
+
+    if (existing) {
       if (existing.status === 'approved') {
-        await ensureMembership(userId, group.id)
+        await ensureMembership(userId, groupId)
         throw new Error('You are already a member of this group')
       }
       if (existing.status === 'pending') {
-        await ensureMembership(userId, group.id)
-        return { group, member: { id: memberRef.id, ...existing }, status: 'pending' }
+        await ensureMembership(userId, groupId)
+        return { group: { id: groupId, ...invite }, member: { id: userId, ...existing }, status: 'pending' }
       }
       if (existing.status === 'rejected') {
         throw new Error('Your previous request to join this group was declined. Please contact the admin.')
@@ -261,11 +424,7 @@ export const useGroupsStore = defineStore('groups', () => {
       }
     }
 
-    if (group.currentCycleRecipientId) {
-      throw new Error('This group is currently mid-rotation. New members can join once every member has received the pot this rotation.')
-    }
-
-    await setDoc(memberRef, {
+    await setDoc(doc(db, 'groups', groupId, 'members', userId), {
       userId,
       displayName,
       email,
@@ -274,15 +433,15 @@ export const useGroupsStore = defineStore('groups', () => {
       status: 'pending',
       joinedAt: serverTimestamp(),
     })
-    await ensureMembership(userId, group.id)
+    await ensureMembership(userId, groupId)
 
-    const groupDoc = await getDoc(doc(db, 'groups', group.id))
-    if (groupDoc.exists()) {
-      const pendingCount = (groupDoc.data().pendingCount || 0) + 1
-      await updateDoc(doc(db, 'groups', group.id), { pendingCount })
+    const groupSnap = await getDoc(doc(db, 'groups', groupId))
+    if (groupSnap.exists()) {
+      const pendingCount = (groupSnap.data().pendingCount || 0) + 1
+      await updateDoc(doc(db, 'groups', groupId), { pendingCount })
     }
 
-    return { group, member: { id: memberRef.id }, status: 'pending' }
+    return { group: { id: groupId, ...invite }, member: { id: userId }, status: 'pending' }
   }
 
   async function approveMember(groupId, memberId) {
@@ -344,8 +503,6 @@ export const useGroupsStore = defineStore('groups', () => {
       status: 'left',
       leftAt: serverTimestamp(),
     })
-
-    await updateDoc(doc(db, 'users', memberId), { memberGroupIds: arrayRemove(groupId) })
 
     const totalMembers = Math.max(0, (groupDoc.data().totalMembers || 1) - 1)
     await updateDoc(doc(db, 'groups', groupId), { totalMembers })
@@ -485,6 +642,64 @@ export const useGroupsStore = defineStore('groups', () => {
     }
   }
 
+  async function archiveGroup(groupId) {
+    const uid = auth.currentUser?.uid
+    if (!uid) throw new Error('You must be signed in to do this')
+    const groupRef = doc(db, 'groups', groupId)
+    const groupDoc = await getDoc(groupRef)
+    if (!groupDoc.exists()) throw new Error('Group not found')
+    const groupData = groupDoc.data()
+    if (groupData.adminId !== uid) throw new Error('Only the group admin can archive this group')
+    if (groupData.status === 'completed') throw new Error('Group is already archived')
+
+    if (groupData.currentCycle > 0) {
+      const membersSnap = await getDocs(collection(db, 'groups', groupId, 'members'))
+      const eligible = membersSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => m.status === 'approved' && !m.leftAt && (m.joinedCycle ?? 1) <= groupData.currentCycle)
+      const rotationConcluded = eligible.length > 0 && eligible.every((m) => m.hasReceived)
+      if (!rotationConcluded) {
+        throw new Error('Cannot archive: the current rotation is still in progress. Every member must receive the pot first.')
+      }
+    }
+
+    await updateDoc(groupRef, {
+      status: 'completed',
+      archivedAt: serverTimestamp(),
+    })
+  }
+
+  async function deleteGroup(groupId) {
+    const uid = auth.currentUser?.uid
+    if (!uid) throw new Error('You must be signed in to do this')
+    const groupRef = doc(db, 'groups', groupId)
+    const groupDoc = await getDoc(groupRef)
+    if (!groupDoc.exists()) throw new Error('Group not found')
+    const groupData = groupDoc.data()
+    if (groupData.adminId !== uid) throw new Error('Only the group admin can delete this group')
+    if (groupData.currentCycle > 0) {
+      throw new Error('Cannot delete a group with active cycles. Archive it instead.')
+    }
+
+    const contribSnap = await getDocs(collection(db, 'groups', groupId, 'contributions'))
+    if (contribSnap.docs.length > 0) {
+      throw new Error('Cannot delete a group with contribution history. Archive it instead.')
+    }
+
+    await deleteDoc(groupRef)
+
+    const uid2 = auth.currentUser?.uid
+    if (uid2) {
+      const userDoc = await getDoc(doc(db, 'users', uid2))
+      if (userDoc.exists()) {
+        const memberGroupIds = userDoc.data().memberGroupIds || []
+        if (memberGroupIds.includes(groupId)) {
+          await updateDoc(doc(db, 'users', uid2), { memberGroupIds: arrayRemove(groupId) })
+        }
+      }
+    }
+  }
+
   async function syncMemberDisplayName(uid, displayName) {
     const groupIds = new Set()
 
@@ -532,11 +747,14 @@ export const useGroupsStore = defineStore('groups', () => {
       const adminSnapshot = await getDocs(
         query(collection(db, 'groups'), where('adminId', '==', uid)),
       )
+      const memberSnapshots = await Promise.all(
+        adminSnapshot.docs.map((groupDoc) =>
+          getDocs(collection(db, 'groups', groupDoc.id, 'members')),
+        ),
+      )
       const results = []
-      for (const groupDoc of adminSnapshot.docs) {
-        const membersSnapshot = await getDocs(
-          collection(db, 'groups', groupDoc.id, 'members'),
-        )
+      adminSnapshot.docs.forEach((groupDoc, i) => {
+        const membersSnapshot = memberSnapshots[i]
         const pending = membersSnapshot.docs
           .map((d) => ({ id: d.id, ...d.data() }))
           .filter((m) => m.status === 'pending')
@@ -548,7 +766,7 @@ export const useGroupsStore = defineStore('groups', () => {
             member,
           })
         }
-      }
+      })
       pendingRequests.value = results
     } catch (e) {
       console.error('Failed to load pending requests', e)
@@ -575,6 +793,8 @@ export const useGroupsStore = defineStore('groups', () => {
     createGroup,
     fetchUserGroups,
     subscribeToGroup,
+    subscribeUserGroups,
+    unsubscribeUserGroups,
     generateInviteLink,
     getGroupByInviteCode,
     joinGroupByInvite,
@@ -583,6 +803,8 @@ export const useGroupsStore = defineStore('groups', () => {
     removeMember,
     moveMemberRotation,
     startNewCycle,
+    archiveGroup,
+    deleteGroup,
     syncMemberDisplayName,
     fetchPendingRequests,
   }

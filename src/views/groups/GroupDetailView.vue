@@ -4,11 +4,22 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGroupsStore } from '@/stores/groups'
 import { useContributionsStore } from '@/stores/contributions'
+import { createNotification } from '@/stores/notifications'
 import { useToast } from '@/composables/useToast'
 import AppBadge from '@/components/common/AppBadge.vue'
-import AppLoader from '@/components/common/AppLoader.vue'
+import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppModal from '@/components/common/AppModal.vue'
+import AppBackButton from '@/components/common/AppBackButton.vue'
 import { formatNaira } from '@/utils/format'
+
+function formatCycleDate(timestamp) {
+  if (!timestamp) return ''
+  const ms = typeof timestamp.toMillis === 'function' ? timestamp.toMillis() : timestamp
+  if (typeof ms === 'number' && Number.isFinite(ms)) {
+    return new Date(ms).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' })
+  }
+  return ''
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -28,6 +39,9 @@ const showMarkPaidModal = ref(false)
 const memberToMarkPaid = ref(null)
 const showPayoutModal = ref(false)
 const memberToPayout = ref(null)
+const forcePayout = ref(false)
+const showArchiveModal = ref(false)
+const showDeleteGroupModal = ref(false)
 
 const selectedCycle = ref(0)
 const cycleOptions = ref([])
@@ -90,17 +104,23 @@ const cycleContributions = computed(() => {
 })
 
 const contributionRows = computed(() => {
-  const rows = eligibleMembers.value.map((m) => ({
-    member: m,
-    contribution: cycleContributions.value[m.id] || null,
-    isVoid: cycleContributions.value[m.id]?.status === 'void',
-    isPaid: cycleContributions.value[m.id]?.status === 'paid',
-  }))
-  if (!isAdmin.value) {
-    const uid = authStore.user?.uid
-    return rows.filter((r) => r.member.userId === uid)
-  }
-  return rows
+  const rows = eligibleMembers.value.map((m) => {
+    const contribution = cycleContributions.value[m.id] || null
+    const isVoid = contribution?.status === 'void'
+    const isPaid = contribution?.status === 'paid'
+    return {
+      member: m,
+      contribution,
+      isVoid,
+      isPaid,
+      isOwing: m.hasReceived && !isPaid && !isVoid,
+    }
+  })
+  return rows.sort((a, b) => {
+    if (a.isOwing && !b.isOwing) return -1
+    if (!a.isOwing && b.isOwing) return 1
+    return 0
+  })
 })
 
 const contributionStats = computed(() => {
@@ -112,6 +132,22 @@ const contributionStats = computed(() => {
 const unpaidDuesCount = computed(() => {
   if (selectedCycle.value !== currentCycle.value) return 0
   return contributionRows.value.filter((r) => !r.isPaid && !r.isVoid).length
+})
+
+const unpaidMemberNames = computed(() => {
+  if (selectedCycle.value !== currentCycle.value) return []
+  return contributionRows.value.filter((r) => !r.isPaid && !r.isVoid).map((r) => r.member.displayName)
+})
+
+const canConfirmPayout = computed(() => {
+  if (!isAdmin.value) return false
+  if (currentCycle.value === 0) return false
+  const recipientId = groupsStore.currentGroup?.currentCycleRecipientId
+  if (!recipientId) return false
+  const recipient = groupsStore.approvedMembers.find((m) => m.id === recipientId)
+  if (!recipient || recipient.hasReceived) return false
+  if (selectedCycle.value !== currentCycle.value) return false
+  return unpaidDuesCount.value === 0
 })
 
 watch(
@@ -232,18 +268,20 @@ async function confirmMarkPaid() {
   }
 }
 
-function openPayoutModal(member) {
+function openPayoutModal(member, isForce = false) {
   memberToPayout.value = member
+  forcePayout.value = isForce
   showPayoutModal.value = true
 }
 
 async function confirmPayout() {
   if (!memberToPayout.value) return
   try {
-    await contributionsStore.confirmPayout(groupId, memberToPayout.value.id, selectedCycle.value)
+    await contributionsStore.confirmPayout(groupId, memberToPayout.value.id, selectedCycle.value, forcePayout.value)
     toast.show(`Payout confirmed for ${memberToPayout.value.displayName}`, 'success')
     showPayoutModal.value = false
     memberToPayout.value = null
+    forcePayout.value = false
   } catch (e) {
     toast.show(e.message, 'error')
   }
@@ -254,6 +292,52 @@ async function handleUndoPayout(member) {
   try {
     await contributionsStore.undoPayout(groupId, member.id, selectedCycle.value)
     toast.show(`Payout reverted for ${member.displayName}`, 'info')
+  } catch (e) {
+    toast.show(e.message, 'error')
+  }
+}
+
+async function handleArchive() {
+  try {
+    await groupsStore.archiveGroup(groupId)
+    toast.show('Group archived', 'success')
+    showArchiveModal.value = false
+    router.push({ name: 'GroupList' })
+  } catch (e) {
+    toast.show(e.message, 'error')
+  }
+}
+
+async function handleDeleteGroup() {
+  try {
+    await groupsStore.deleteGroup(groupId)
+    toast.show('Group deleted', 'success')
+    showDeleteGroupModal.value = false
+    router.push({ name: 'GroupList' })
+  } catch (e) {
+    toast.show(e.message, 'error')
+  }
+}
+
+async function handleRemindAll() {
+  try {
+    const count = await contributionsStore.remindUnpaid(groupId, selectedCycle.value)
+    toast.show(`${count} reminder${count === 1 ? '' : 's'} sent`, 'success')
+  } catch (e) {
+    toast.show(e.message, 'error')
+  }
+}
+
+async function handleRemindSingle(member) {
+  if (!member) return
+  try {
+    await createNotification({
+      userId: member.userId || member.id,
+      groupId,
+      type: 'reminder',
+      message: `Reminder: you haven't paid your contribution for Cycle ${selectedCycle.value} in ${groupsStore.currentGroup?.name || 'your group'}.`,
+    })
+    toast.show(`Reminder sent to ${member.displayName}`, 'success')
   } catch (e) {
     toast.show(e.message, 'error')
   }
@@ -282,11 +366,30 @@ async function handleVoid(member) {
 
 <template>
   <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-    <div v-if="groupsStore.currentGroupStatus === 'loading'">
-      <AppLoader text="Loading group..." />
+    <div v-if="groupsStore.currentGroupStatus === 'loading'" aria-label="Loading..." aria-busy="true">
+      <AppSkeleton class="h-5 w-16 mb-4" />
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+        <AppSkeleton class="h-7 w-48 mb-2" />
+        <AppSkeleton class="h-4 w-64 mb-1" />
+        <AppSkeleton class="h-3 w-40" />
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="divide-y divide-slate-100">
+          <div v-for="i in 4" :key="i" class="flex items-center gap-4 px-5 py-3.5">
+            <AppSkeleton class="h-4 w-6" />
+            <AppSkeleton circle class="h-9 w-9 shrink-0" />
+            <div class="flex-1 min-w-0">
+              <AppSkeleton class="h-3.5 w-28 mb-1.5" />
+              <AppSkeleton class="h-3 w-36" />
+            </div>
+            <AppSkeleton class="h-5 w-14 rounded-full" />
+          </div>
+        </div>
+      </div>
     </div>
 
     <div v-else-if="groupsStore.currentGroupStatus === 'ready' && groupsStore.currentGroup">
+      <AppBackButton :fallback="{ name: 'GroupList' }" />
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -295,6 +398,9 @@ async function handleVoid(member) {
               {{ formatNaira(groupsStore.currentGroup.contributionAmount) }}/{{ groupsStore.currentGroup.frequency }}
               &middot; Cycle {{ groupsStore.currentGroup.currentCycle }}
               &middot; {{ groupsStore.currentGroup.totalMembers }} members
+            </p>
+            <p v-if="groupsStore.currentGroup.currentCycleStartDate" class="text-xs text-muted mt-0.5">
+              Cycle started {{ formatCycleDate(groupsStore.currentGroup.currentCycleStartDate) }}
             </p>
             <p v-if="isAdmin" class="text-xs text-accent-600 font-medium mt-1">You are the admin</p>
           </div>
@@ -308,6 +414,9 @@ async function handleVoid(member) {
               @click="showCycleModal = true"
             >
               Start New Cycle
+            </button>
+            <button v-if="isAdmin && groupsStore.currentGroup.status !== 'completed'" class="bg-white text-red-600 px-4 py-2 rounded-lg text-sm font-medium border border-red-300 hover:bg-red-50 cursor-pointer" @click="currentCycle === 0 && contributionRows.every(r => !r.isPaid) ? showDeleteGroupModal = true : showArchiveModal = true">
+              {{ currentCycle === 0 && contributionRows.every(r => !r.isPaid) ? 'Delete Group' : 'Archive Group' }}
             </button>
           </div>
         </div>
@@ -378,16 +487,29 @@ async function handleVoid(member) {
           <p class="text-sm text-muted">{{ contributionStats.paid }} of {{ contributionStats.total }} paid</p>
         </div>
 
-        <div v-if="unpaidDuesCount > 0 && isAdmin" class="bg-amber-50 border-b border-amber-200 px-5 py-3 text-sm text-amber-800">
-          ⚠ {{ unpaidDuesCount }} contributor{{ unpaidDuesCount === 1 ? '' : 's' }} haven't paid for this cycle yet. You can still start the next cycle, but remind them to pay.
+        <div v-if="unpaidDuesCount > 0" class="bg-amber-50 border-b border-amber-200 px-5 py-3 text-sm text-amber-800">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="font-medium">⚠ {{ unpaidDuesCount }} contributor{{ unpaidDuesCount === 1 ? '' : 's' }} haven't paid for this cycle yet.</p>
+              <p class="text-xs text-amber-700 mt-0.5">{{ unpaidMemberNames.join(', ') }}</p>
+            </div>
+            <button v-if="isAdmin" class="bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-700 cursor-pointer shrink-0" @click="handleRemindAll">Remind All</button>
+          </div>
         </div>
 
         <div v-if="currentCycle === 0" class="px-5 py-10 text-center text-sm text-muted">
           No cycles yet. {{ isAdmin ? 'Start the first cycle to begin collecting contributions.' : 'Waiting for the admin to start the first cycle.' }}
         </div>
 
-        <div v-else-if="contributionsStore.contributionsLoading" class="px-5 py-10 text-center">
-          <AppLoader text="Loading contributions..." />
+        <div v-else-if="contributionsStore.contributionsLoading" class="px-5 py-10">
+          <div class="space-y-3">
+            <div v-for="i in 4" :key="i" class="flex items-center gap-4">
+              <AppSkeleton class="h-3.5 w-24" />
+              <AppSkeleton class="h-5 w-14 rounded-full" />
+              <AppSkeleton class="h-3.5 w-16" />
+              <AppSkeleton class="h-3.5 w-16" />
+            </div>
+          </div>
         </div>
 
         <div v-else-if="contributionRows.length" class="overflow-x-auto">
@@ -406,6 +528,7 @@ async function handleVoid(member) {
                 <td class="px-5 py-3 font-medium text-slate-900">{{ row.member.displayName }}</td>
                 <td class="px-5 py-3">
                   <AppBadge v-if="row.isVoid" variant="void">Voided</AppBadge>
+                  <AppBadge v-else-if="row.isOwing" variant="owing">Owing</AppBadge>
                   <AppBadge v-else-if="row.isPaid" variant="paid">Paid</AppBadge>
                   <AppBadge v-else variant="pending">Unpaid</AppBadge>
                 </td>
@@ -413,8 +536,10 @@ async function handleVoid(member) {
                 <td class="px-5 py-3 text-muted hidden md:table-cell">{{ row.contribution?.paidAt ? new Date(row.contribution.paidAt.toMillis ? row.contribution.paidAt.toMillis() : row.contribution.paidAt).toLocaleDateString() : '—' }}</td>
                 <td v-if="isAdmin" class="px-5 py-3 text-right">
                   <button v-if="!row.isPaid && !row.isVoid" class="bg-primary-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-primary-700 cursor-pointer" @click="openMarkPaidModal(row.member)">Mark Paid</button>
+                  <button v-if="!row.isPaid && !row.isVoid && selectedCycle === currentCycle" class="ml-1 text-xs text-amber-600 hover:text-amber-700 cursor-pointer" @click="handleRemindSingle(row.member)">Remind</button>
                   <button v-else-if="row.isPaid" class="text-xs text-red-600 hover:text-red-700 cursor-pointer" @click="handleVoid(row.member)">Void</button>
-                  <button v-if="!row.member.hasReceived && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId" class="ml-2 bg-accent-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent-700 cursor-pointer" @click="openPayoutModal(row.member)">Confirm Payout</button>
+                  <button v-if="!row.member.hasReceived && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && canConfirmPayout" class="ml-2 bg-accent-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent-700 cursor-pointer" @click="openPayoutModal(row.member, false)">Confirm Payout</button>
+                  <button v-if="!row.member.hasReceived && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && !canConfirmPayout && unpaidDuesCount > 0" class="ml-2 text-xs text-amber-700 hover:text-amber-800 font-medium cursor-pointer" title="Some members haven't paid yet — force confirm anyway" @click="openPayoutModal(row.member, true)">Force Payout</button>
                   <button v-if="row.member.hasReceived && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId" class="ml-2 text-xs text-accent-700 hover:text-accent-800 cursor-pointer" @click="handleUndoPayout(row.member)">Undo Payout</button>
                 </td>
               </tr>
@@ -488,9 +613,32 @@ async function handleVoid(member) {
       <p class="text-sm text-muted mb-4">
         Confirm that <span class="font-medium text-slate-900">{{ memberToPayout?.displayName }}</span> received the pot for Cycle {{ selectedCycle }}. Once confirmed, the next cycle can be started.
       </p>
+      <div v-if="forcePayout" class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+        <p class="text-sm text-amber-800"><span class="font-medium">Note:</span> {{ unpaidDuesCount }} contributor{{ unpaidDuesCount === 1 ? ' has' : 's have' }} not paid yet. You are force-confirming the payout.</p>
+      </div>
       <div class="flex justify-end gap-2">
         <button class="bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showPayoutModal = false">Cancel</button>
-        <button class="bg-accent-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-accent-700 cursor-pointer" @click="confirmPayout">Confirm Payout</button>
+        <button class="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer" :class="forcePayout ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-accent-600 text-white hover:bg-accent-700'" @click="confirmPayout">{{ forcePayout ? 'Force Confirm' : 'Confirm Payout' }}</button>
+      </div>
+    </AppModal>
+
+    <AppModal :open="showArchiveModal" title="Archive Group" @close="showArchiveModal = false">
+      <p class="text-sm text-muted mb-4">
+        Archive <span class="font-medium text-slate-900">{{ groupsStore.currentGroup?.name }}</span>? The group will be marked as completed and hidden from your active list. All contribution history is preserved.
+      </p>
+      <div class="flex justify-end gap-2">
+        <button class="bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showArchiveModal = false">Cancel</button>
+        <button class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 cursor-pointer" @click="handleArchive">Archive</button>
+      </div>
+    </AppModal>
+
+    <AppModal :open="showDeleteGroupModal" title="Delete Group" @close="showDeleteGroupModal = false">
+      <p class="text-sm text-muted mb-4">
+        Permanently delete <span class="font-medium text-slate-900">{{ groupsStore.currentGroup?.name }}</span>? This cannot be undone. The group has no contribution history.
+      </p>
+      <div class="flex justify-end gap-2">
+        <button class="bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showDeleteGroupModal = false">Cancel</button>
+        <button class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 cursor-pointer" @click="handleDeleteGroup">Delete Group</button>
       </div>
     </AppModal>
   </div>

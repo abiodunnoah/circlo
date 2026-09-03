@@ -63,6 +63,8 @@ function openLogoutModal() {
 
 async function confirmLogout() {
   showLogoutModal.value = false
+  groupsStore.unsubscribeUserGroups()
+  notificationsStore.unsubscribeNotifications()
   await authStore.logout()
   router.push({ name: 'Landing' })
 }
@@ -77,12 +79,29 @@ watch(isAdminOfAnyGroup, (value) => {
   if (value) refreshRequestCount()
 })
 
+watch(
+  () => authStore.user?.uid,
+  (uid, prevUid) => {
+    if (uid && uid !== prevUid) {
+      groupsStore.subscribeUserGroups()
+      notificationsStore.subscribeNotifications()
+    } else if (!uid) {
+      groupsStore.unsubscribeUserGroups()
+      notificationsStore.unsubscribeNotifications()
+    }
+  },
+)
+
 onMounted(() => {
+  if (authStore.user) {
+    groupsStore.subscribeUserGroups()
+    notificationsStore.subscribeNotifications()
+  }
   refreshRequestCount()
-  notificationsStore.subscribeNotifications()
 })
 
 onUnmounted(() => {
+  groupsStore.unsubscribeUserGroups()
   notificationsStore.unsubscribeNotifications()
 })
 </script>

@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationsStore } from '@/stores/notifications'
-import AppLoader from '@/components/common/AppLoader.vue'
+import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 
 const router = useRouter()
@@ -21,6 +21,7 @@ function icon(type) {
   if (type === 'your_turn') return 'M13 7V3a1 1 0 00-1-1H5a1 1 0 00-1 1v18a1 1 0 001 1h14a1 1 0 001-1V9a1 1 0 00-1-1h-4zM9 12l2 2 4-4'
   if (type === 'new_cycle') return 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'
   if (type === 'approved') return 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z'
+  if (type === 'reminder') return 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9'
   return ''
 }
 
@@ -69,8 +70,14 @@ onUnmounted(() => {
       <button class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer" :class="filter === 'unread' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'" @click="filter = 'unread'">Unread</button>
     </div>
 
-    <div v-if="notificationsStore.loading" class="bg-white rounded-xl border border-slate-200 shadow-sm">
-      <AppLoader text="Loading notifications..." />
+    <div v-if="notificationsStore.loading" aria-label="Loading..." aria-busy="true" class="space-y-2">
+      <div v-for="i in 5" :key="i" class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-start gap-3">
+        <AppSkeleton circle class="w-8 h-8 mt-0.5 shrink-0" />
+        <div class="flex-1 min-w-0">
+          <AppSkeleton class="h-3.5 w-3/4 mb-1.5" />
+          <AppSkeleton class="h-3 w-24" />
+        </div>
+      </div>
     </div>
 
     <div v-else-if="filtered.length" class="space-y-2">

@@ -39,7 +39,11 @@ import { useContributionsStore } from '@/stores/contributions'
 describe('contributions store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.clearAllMocks()
+    mocks.mockGetDoc.mockReset()
+    mocks.mockGetDocs.mockReset()
+    mocks.mockSetDoc.mockReset()
+    mocks.mockUpdateDoc.mockReset()
+    mocks.mockAddDoc.mockReset()
   })
 
   it('markAsPaid creates a contribution doc with a deterministic id for any eligible member', async () => {
@@ -90,7 +94,7 @@ describe('contributions store', () => {
       .mockResolvedValueOnce({ exists: () => true, data: () => ({ userId: 'user-2', status: 'approved' }) })
     const store = useContributionsStore()
 
-    await store.confirmPayout('group-1', 'user-2', 3)
+    await store.confirmPayout('group-1', 'user-2', 3, true)
 
     expect(mocks.mockUpdateDoc).toHaveBeenCalledWith(
       expect.anything(),
@@ -102,7 +106,7 @@ describe('contributions store', () => {
     mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'admin-1', currentCycle: 3, currentCycleRecipientId: 'user-2' }) })
     const store = useContributionsStore()
 
-    await expect(store.confirmPayout('group-1', 'user-9', 3)).rejects.toThrow('current cycle recipient')
+    await expect(store.confirmPayout('group-1', 'user-9', 3, true)).rejects.toThrow('current cycle recipient')
     expect(mocks.mockUpdateDoc).not.toHaveBeenCalled()
   })
 

@@ -85,4 +85,39 @@ describe('buildCycleRows', () => {
     const rows = buildCycleRows([...cycles].reverse(), contributions, members)
     expect(rows.map((r) => r.cycle)).toEqual([1, 2])
   })
+
+  it('derives rows from contributions when no cycle docs exist', () => {
+    const rows = buildCycleRows([], contributions, members)
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({
+      cycle: 1,
+      totalCollected: 10000,
+      recipientName: '—',
+      paidCount: 2,
+      totalCount: 3,
+    })
+    expect(rows[1]).toMatchObject({
+      cycle: 2,
+      totalCollected: 10000,
+      recipientName: '—',
+    })
+  })
+
+  it('includes the currentCycle even when no contributions exist yet', () => {
+    const rows = buildCycleRows([], [], members, 3)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      cycle: 3,
+      totalCollected: 0,
+      recipientName: '—',
+      paidCount: 0,
+      totalCount: 4,
+      allPaid: false,
+    })
+  })
+
+  it('returns empty when nothing exists', () => {
+    const rows = buildCycleRows([], [], [], 0)
+    expect(rows).toHaveLength(0)
+  })
 })

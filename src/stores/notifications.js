@@ -1,7 +1,14 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { db, auth } from '@/firebase'
-import { collection, query, where, orderBy, onSnapshot, addDoc, updateDoc, writeBatch, doc, serverTimestamp } from 'firebase/firestore'
+import { collection, query, where, onSnapshot, addDoc, updateDoc, writeBatch, doc, serverTimestamp } from 'firebase/firestore'
+
+function toTime(value) {
+  if (!value) return 0
+  if (typeof value.toMillis === 'function') return value.toMillis()
+  if (value instanceof Date) return value.getTime()
+  return Number(value) || 0
+}
 
 export async function createNotification({ userId, groupId, type, message }) {
   await addDoc(collection(db, 'notifications'), {
@@ -36,6 +43,10 @@ export const useNotificationsStore = defineStore('notifications', () => {
       unsubscribe = null
     }
     currentUid = null
+    notifications.value = []
+    unreadCount.value = 0
+    loading.value = false
+    error.value = null
   }
 
   function subscribeNotifications() {
@@ -51,10 +62,11 @@ export const useNotificationsStore = defineStore('notifications', () => {
       query(
         collection(db, 'notifications'),
         where('userId', '==', uid),
-        orderBy('createdAt', 'desc'),
       ),
       (snapshot) => {
-        const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))
+        const list = snapshot.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => toTime(b.createdAt) - toTime(a.createdAt))
         notifications.value = list
         unreadCount.value = list.filter((n) => !n.read).length
         loading.value = false

@@ -4,8 +4,9 @@ import { useRouter } from 'vue-router'
 import { useGroupsStore } from '@/stores/groups'
 import { useReportsStore } from '@/stores/reports'
 import { useToast } from '@/composables/useToast'
-import AppLoader from '@/components/common/AppLoader.vue'
+import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import AppBackButton from '@/components/common/AppBackButton.vue'
 import { formatNaira } from '@/utils/format'
 import Chart from 'chart.js/auto'
 import { jsPDF } from 'jspdf'
@@ -144,12 +145,13 @@ watch(
   { deep: true },
 )
 
-onMounted(async () => {
-  await groupsStore.fetchUserGroups()
-  if (adminGroups.value.length) {
-    selectedGroupId.value = adminGroups.value[0].id
+watch(adminGroups, (groups) => {
+  if (groups.length && !selectedGroupId.value) {
+    selectedGroupId.value = groups[0].id
   }
-})
+}, { immediate: true })
+
+onMounted(() => {})
 
 onUnmounted(() => {
   destroyCharts()
@@ -158,6 +160,7 @@ onUnmounted(() => {
 
 <template>
   <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+    <AppBackButton :fallback="{ name: 'Dashboard' }" />
     <h1 class="text-2xl font-bold text-slate-900 mb-6">Reports</h1>
 
     <div v-if="adminGroups.length === 0" class="bg-white rounded-xl border border-slate-200 shadow-sm">
@@ -182,7 +185,7 @@ onUnmounted(() => {
             <label class="block text-sm font-medium text-slate-700 mb-1">Cycle</label>
             <select v-model="selectedCycle" class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
               <option value="all">All Cycles</option>
-              <option v-for="c in reportsStore.cycles" :key="c.cycle" :value="String(c.cycle)">Cycle {{ c.cycle }}</option>
+              <option v-for="c in reportsStore.rows" :key="c.cycle" :value="String(c.cycle)">Cycle {{ c.cycle }}</option>
             </select>
           </div>
           <div class="flex items-end">
@@ -200,8 +203,35 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-if="reportsStore.loading" class="bg-white rounded-xl border border-slate-200 shadow-sm">
-        <AppLoader text="Loading report..." />
+      <div v-if="reportsStore.loading" aria-label="Loading..." aria-busy="true">
+        <div class="grid sm:grid-cols-3 gap-4 mb-6">
+          <div v-for="i in 3" :key="i" class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <AppSkeleton class="h-3 w-28 mb-2" />
+            <AppSkeleton class="h-7 w-20" />
+          </div>
+        </div>
+        <div class="grid lg:grid-cols-3 gap-4 mb-6">
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 lg:col-span-2">
+            <AppSkeleton class="h-4 w-32 mb-3" />
+            <AppSkeleton class="h-64 w-full rounded-lg" />
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <AppSkeleton class="h-4 w-40 mb-3" />
+            <AppSkeleton class="h-64 w-full rounded-lg" />
+          </div>
+        </div>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-5 py-3 bg-slate-50 border-b border-slate-200">
+            <AppSkeleton class="h-4 w-32" />
+          </div>
+          <div v-for="i in 4" :key="i" class="flex items-center gap-4 px-5 py-3 border-b border-slate-100">
+            <AppSkeleton class="h-3.5 w-16" />
+            <AppSkeleton class="h-3.5 w-20" />
+            <AppSkeleton class="h-3.5 w-24" />
+            <AppSkeleton class="h-3.5 w-20" />
+            <AppSkeleton class="h-5 w-16 rounded-full" />
+          </div>
+        </div>
       </div>
 
       <template v-else-if="reportsStore.error">
@@ -247,6 +277,7 @@ onUnmounted(() => {
               <thead>
                 <tr class="border-b border-slate-200 bg-slate-50">
                   <th class="text-left px-5 py-3 font-medium text-muted">Cycle</th>
+                  <th class="text-left px-5 py-3 font-medium text-muted hidden sm:table-cell">Started</th>
                   <th class="text-left px-5 py-3 font-medium text-muted hidden sm:table-cell">Total Collected</th>
                   <th class="text-left px-5 py-3 font-medium text-muted">Recipient</th>
                   <th class="text-left px-5 py-3 font-medium text-muted hidden sm:table-cell">Contributions</th>
@@ -256,6 +287,7 @@ onUnmounted(() => {
               <tbody class="divide-y divide-slate-100">
                 <tr v-for="r in filteredRows" :key="r.cycle" class="hover:bg-slate-50">
                   <td class="px-5 py-3 font-medium text-slate-900">Cycle {{ r.cycle }}</td>
+                  <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ r.startedAt ? new Date(r.startedAt.toMillis ? r.startedAt.toMillis() : r.startedAt).toLocaleDateString() : '—' }}</td>
                   <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ formatNaira(r.totalCollected) }}</td>
                   <td class="px-5 py-3">{{ r.recipientName }}</td>
                   <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ r.paidCount }}/{{ r.totalCount }}</td>

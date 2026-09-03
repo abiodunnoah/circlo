@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGroupsStore } from '@/stores/groups'
 import { useToast } from '@/composables/useToast'
+import AppBackButton from '@/components/common/AppBackButton.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -42,6 +43,7 @@ async function handleCreate() {
 
 <template>
   <div class="max-w-lg mx-auto px-4 py-8">
+    <AppBackButton :fallback="{ name: 'GroupList' }" />
     <h1 class="text-2xl font-bold text-slate-900 mb-6">Create a Group</h1>
 
     <form class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4" @submit.prevent="handleCreate">

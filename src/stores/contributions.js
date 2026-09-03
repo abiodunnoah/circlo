@@ -103,7 +103,7 @@ export const useContributionsStore = defineStore('contributions', () => {
     return { id: docId, userId, cycle, amount, markedBy: adminId, status: 'paid' }
   }
 
-  async function confirmPayout(groupId, memberId, cycle) {
+  async function confirmPayout(groupId, memberId, cycle, force = false) {
     const adminId = auth.currentUser?.uid
     if (!adminId) throw new Error('You must be signed in to do this')
 
@@ -117,6 +117,23 @@ export const useContributionsStore = defineStore('contributions', () => {
     }
     if (groupData.currentCycleRecipientId && groupData.currentCycleRecipientId !== memberId) {
       throw new Error('Only the current cycle recipient can be confirmed as paid out')
+    }
+
+    if (!force) {
+      const contribSnap = await getDocs(
+        query(collection(db, 'groups', groupId, 'contributions'), where('cycle', '==', cycle)),
+      )
+      const membersSnap = await getDocs(collection(db, 'groups', groupId, 'members'))
+      const eligible = membersSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => m.status === 'approved' && !m.leftAt && (m.joinedCycle ?? 1) <= cycle)
+      const unpaid = eligible.filter((m) => {
+        const c = contribSnap.docs.find((cd) => cd.data().userId === m.id)
+        return !c || c.data().status === 'void'
+      })
+      if (unpaid.length > 0) {
+        throw new Error(`${unpaid.length} contributor${unpaid.length === 1 ? ' has' : 's have'} not paid yet. Mark them as paid or force the payout.`)
+      }
     }
 
     const memberRef = doc(db, 'groups', groupId, 'members', memberId)
@@ -202,44 +219,77 @@ export const useContributionsStore = defineStore('contributions', () => {
     }
 
     const rows = []
-    for (const groupId of groupIds) {
-      try {
-        const [groupDoc, snapshot] = await Promise.all([
-          getDoc(doc(db, 'groups', groupId)),
-          getDocs(collection(db, 'groups', groupId, 'contributions')),
-        ])
-        const groupName = groupDoc.exists() ? groupDoc.data().name || groupId : groupId
-        const memberNameByUid = {}
+    const groupResults = await Promise.all(
+      Array.from(groupIds).map(async (groupId) => {
         try {
-          const memberSnapshot = await getDocs(collection(db, 'groups', groupId, 'members'))
+          const [groupDoc, snapshot, memberSnapshot] = await Promise.all([
+            getDoc(doc(db, 'groups', groupId)),
+            getDocs(collection(db, 'groups', groupId, 'contributions')),
+            getDocs(collection(db, 'groups', groupId, 'members')),
+          ])
+          const groupName = groupDoc.exists() ? groupDoc.data().name || groupId : groupId
+          const memberNameByUid = {}
           memberSnapshot.docs.forEach((d) => {
             const data = d.data()
             if (data.userId) memberNameByUid[data.userId] = data.displayName || data.userId
           })
+          return snapshot.docs
+            .filter((d) => d.data().userId === uid)
+            .map((d) => ({
+              id: d.id,
+              groupId,
+              groupName,
+              memberName: memberNameByUid[uid] || uid,
+              ...d.data(),
+              paidAtTime: toTime(d.data().paidAt),
+            }))
         } catch (e) {
-          console.error(`Failed to list members for ${groupId}`, e)
+          console.error(`Failed to load contributions for ${groupId}`, e)
+          myContributionsError.value = e.message
+          return []
         }
-        snapshot.docs.forEach((d) => {
-          const data = d.data()
-          if (data.userId !== uid) return
-          rows.push({
-            id: d.id,
-            groupId,
-            groupName,
-            memberName: memberNameByUid[uid] || uid,
-            ...data,
-            paidAtTime: toTime(data.paidAt),
-          })
-        })
-      } catch (e) {
-        console.error(`Failed to load contributions for ${groupId}`, e)
-        myContributionsError.value = e.message
-      }
-    }
+      }),
+    )
+
+    groupResults.forEach((list) => rows.push(...list))
 
     rows.sort((a, b) => b.paidAtTime - a.paidAtTime || a.groupName.localeCompare(b.groupName))
     myContributions.value = rows
     myContributionsLoading.value = false
+  }
+
+  async function remindUnpaid(groupId, cycle) {
+    const adminId = auth.currentUser?.uid
+    if (!adminId) throw new Error('You must be signed in to do this')
+
+    const groupDoc = await getDoc(doc(db, 'groups', groupId))
+    if (!groupDoc.exists()) throw new Error('Group not found')
+    const groupData = groupDoc.data()
+    if (groupData.adminId !== adminId) throw new Error('Only the group admin can send reminders')
+
+    const contribSnap = await getDocs(
+      query(collection(db, 'groups', groupId, 'contributions'), where('cycle', '==', cycle)),
+    )
+    const membersSnap = await getDocs(collection(db, 'groups', groupId, 'members'))
+    const eligible = membersSnap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((m) => m.status === 'approved' && !m.leftAt && (m.joinedCycle ?? 1) <= cycle)
+
+    const unpaid = eligible.filter((m) => {
+      const c = contribSnap.docs.find((cd) => cd.data().userId === m.id)
+      return !c || c.data().status === 'void'
+    })
+
+    for (const m of unpaid) {
+      await createNotification({
+        userId: m.id,
+        groupId,
+        type: 'reminder',
+        message: `Reminder: you haven't paid your contribution for Cycle ${cycle} in ${groupData.name || 'your group'}.`,
+      })
+    }
+
+    return unpaid.length
   }
 
   return {
@@ -257,6 +307,7 @@ export const useContributionsStore = defineStore('contributions', () => {
     confirmPayout,
     undoPayout,
     voidContribution,
+    remindUnpaid,
     fetchMyContributions,
   }
 })

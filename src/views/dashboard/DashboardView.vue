@@ -6,7 +6,7 @@ import { useGroupsStore } from '@/stores/groups'
 import { useContributionsStore } from '@/stores/contributions'
 import { useToast } from '@/composables/useToast'
 import AppCard from '@/components/common/AppCard.vue'
-import AppLoader from '@/components/common/AppLoader.vue'
+import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import { formatNaira } from '@/utils/format'
 
@@ -69,7 +69,6 @@ const pendingCount = computed(() => {
 const isAdminOfAnyGroup = computed(() => groups.value.some((g) => g.role === 'admin'))
 
 onMounted(() => {
-  groupsStore.fetchUserGroups()
   contributionsStore.fetchMyContributions()
 })
 </script>
@@ -89,15 +88,35 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="groupsStore.loading" class="bg-white rounded-xl border border-slate-200 shadow-sm">
-      <AppLoader text="Loading your groups..." />
+    <div v-if="groupsStore.loading" aria-label="Loading..." aria-busy="true">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div v-for="i in 4" :key="i" class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+          <AppSkeleton class="h-3 w-20 mb-2" />
+          <AppSkeleton class="h-7 w-16" />
+        </div>
+      </div>
+      <AppSkeleton class="h-5 w-28 mb-4" />
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div v-for="i in 6" :key="i" class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+          <div class="flex items-start justify-between mb-3">
+            <AppSkeleton class="h-4 w-1/2" />
+            <AppSkeleton class="h-5 w-12 rounded-full" />
+          </div>
+          <div class="space-y-2.5">
+            <AppSkeleton class="h-3 w-full" />
+            <AppSkeleton class="h-3 w-3/5" />
+            <AppSkeleton class="h-3 w-2/3" />
+            <AppSkeleton class="h-3 w-1/3" />
+          </div>
+        </div>
+      </div>
     </div>
 
     <template v-else>
       <div v-if="groupsStore.error" class="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
         <p class="text-sm font-medium text-red-800 mb-1">Couldn't load your groups</p>
         <p class="text-sm text-red-700 mb-2">{{ groupsStore.error }}</p>
-        <button class="text-sm font-medium text-red-700 underline cursor-pointer" @click="groupsStore.fetchUserGroups()">Try again</button>
+        <button class="text-sm font-medium text-red-700 underline cursor-pointer" @click="groupsStore.unsubscribeUserGroups(); groupsStore.subscribeUserGroups()">Try again</button>
       </div>
 
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
