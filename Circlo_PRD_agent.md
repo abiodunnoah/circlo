@@ -420,12 +420,12 @@ circlo/
 - [ ] Push notifications
 
 ### Phase 6 — v2 (Chit Fund Mode)
-- [ ] Arrears tracker: "Collected but owing" badge (member `cyclesOwed`) + report integration — highest-value risk signal
-- [ ] Multiple slots per member (pay 2×, collect 2×)
+- [x] Arrears tracker: "Collected but owing" badge (member `cyclesOwed`) + report integration — highest-value risk signal
+- [x] Multiple slots per member (pay 2×, collect 2×)
 - [ ] Slot swapping between members (with admin confirmation)
-- [ ] Auction/bidding mode (chit fund): winner bids lowest discount; surplus redistributed — addresses the "last position gets zero return" fairness gap
 - [ ] Organizer fee/commission support
-- [ ] Surety requirement for early winners (post-approval default protection)
+- ~~Auction/bidding mode~~ — deferred (creates chit-fund risk; revisit as separate mode if demand appears)
+- ~~Surety requirement for early winners~~ — deferred (only meaningful with auction mode)
 
 ---
 

@@ -22,6 +22,21 @@ function toTime(value) {
   return Number(value) || 0
 }
 
+const MAX_SLOTS = 10
+
+function memberSlots(m) {
+  return Math.max(1, Number(m?.slots) || 1)
+}
+
+function memberReceived(m) {
+  if (m?.receivedCount !== undefined && m?.receivedCount !== null) return m.receivedCount
+  return m?.hasReceived ? 1 : 0
+}
+
+function nextPosition(m) {
+  return (m?.rotationOrder || 0) + memberReceived(m)
+}
+
 async function ensureMembership(uid, groupId) {
   await setDoc(doc(db, 'users', uid), { memberGroupIds: arrayUnion(groupId) }, { merge: true })
 }
@@ -224,7 +239,9 @@ export const useGroupsStore = defineStore('groups', () => {
         frequency,
         startDate: parsedStartDate,
         totalMembers: 1,
+        totalSlots: 1,
         currentCycle: 0,
+        currentCyclePayoutConfirmed: false,
         status: 'active',
         inviteCode,
         adminId,
@@ -243,6 +260,8 @@ export const useGroupsStore = defineStore('groups', () => {
         email: adminEmail,
         rotationOrder: 1,
         hasReceived: false,
+        slots: 1,
+        receivedCount: 0,
         status: 'approved',
         joinedCycle: 1,
         joinedAt: serverTimestamp(),
@@ -357,7 +376,12 @@ export const useGroupsStore = defineStore('groups', () => {
     const unsubscribeMembers = onSnapshot(
       collection(db, 'groups', groupId, 'members'),
       (snapshot) => {
-        const allMembers = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))
+        const allMembers = snapshot.docs.map((d) => {
+          const data = d.data()
+          const slots = memberSlots(data)
+          const receivedCount = memberReceived(data)
+          return { id: d.id, ...data, slots, receivedCount, hasReceived: receivedCount >= slots }
+        })
         members.value = allMembers
         pendingMembers.value = allMembers
           .filter((m) => m.status === 'pending')
@@ -430,6 +454,8 @@ export const useGroupsStore = defineStore('groups', () => {
       email,
       rotationOrder: 0,
       hasReceived: false,
+      slots: 1,
+      receivedCount: 0,
       status: 'pending',
       joinedAt: serverTimestamp(),
     })
@@ -444,7 +470,7 @@ export const useGroupsStore = defineStore('groups', () => {
     return { group: { id: groupId, ...invite }, member: { id: userId }, status: 'pending' }
   }
 
-  async function approveMember(groupId, memberId) {
+  async function approveMember(groupId, memberId, slots = 1) {
     const memberRef = doc(db, 'groups', groupId, 'members', memberId)
     const memberDoc = await getDoc(memberRef)
     if (!memberDoc.exists()) return
@@ -453,20 +479,28 @@ export const useGroupsStore = defineStore('groups', () => {
     const groupData = groupDoc.exists() ? groupDoc.data() : {}
     const currentCycle = groupData.currentCycle || 0
 
+    const requestedSlots = Math.min(MAX_SLOTS, Math.max(1, Number(slots) || 1))
+
     const nextOrder = approvedMembers.value.length
-      ? Math.max(...approvedMembers.value.map((m) => m.rotationOrder)) + 1
+      ? approvedMembers.value.reduce(
+          (max, m) => Math.max(max, (m.rotationOrder || 0) + memberSlots(m) - 1),
+          0,
+        ) + 1
       : 1
 
     await updateDoc(memberRef, {
       status: 'approved',
       rotationOrder: nextOrder,
+      slots: requestedSlots,
+      receivedCount: 0,
       joinedCycle: currentCycle + 1,
       approvedAt: serverTimestamp(),
     })
 
     const totalMembers = (groupData.totalMembers || 0) + 1
+    const totalSlots = (groupData.totalSlots || 0) + requestedSlots
     const pendingCount = Math.max(0, (groupData.pendingCount || 0) - 1)
-    await updateDoc(doc(db, 'groups', groupId), { totalMembers, pendingCount })
+    await updateDoc(doc(db, 'groups', groupId), { totalMembers, totalSlots, pendingCount })
 
     await createNotification({
       userId: memberId,
@@ -488,6 +522,48 @@ export const useGroupsStore = defineStore('groups', () => {
     }
   }
 
+  async function setMemberSlots(groupId, memberId, slots) {
+    const uid = auth.currentUser?.uid
+    if (!uid) throw new Error('You must be signed in to do this')
+
+    const groupDoc = await getDoc(doc(db, 'groups', groupId))
+    if (!groupDoc.exists()) throw new Error('Group not found')
+    const groupData = groupDoc.data()
+    if (groupData.adminId !== uid) throw new Error('Only the group admin can change slots')
+
+    const currentCycle = groupData.currentCycle || 0
+    if (currentCycle !== 0) {
+      const membersSnapshot = await getDocs(collection(db, 'groups', groupId, 'members'))
+      const eligible = membersSnapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => m.status === 'approved' && !m.leftAt && (m.joinedCycle ?? 1) <= Math.max(currentCycle, 1))
+      const rotationConcluded = eligible.length > 0 && eligible.every((m) => memberReceived(m) >= memberSlots(m))
+      if (!rotationConcluded) {
+        throw new Error('Slots can only be changed before the first cycle or after every member has received the pot.')
+      }
+    }
+
+    const memberRef = doc(db, 'groups', groupId, 'members', memberId)
+    const memberDoc = await getDoc(memberRef)
+    if (!memberDoc.exists()) return
+    if (memberDoc.data().status !== 'approved') throw new Error('Only approved members can have slots changed')
+
+    const requestedSlots = Math.min(MAX_SLOTS, Math.max(1, Number(slots) || 1))
+    const previousSlots = memberSlots(memberDoc.data())
+    const delta = requestedSlots - previousSlots
+
+    const receivedCount = memberReceived(memberDoc.data())
+    const hasReceived = receivedCount >= requestedSlots
+
+    await updateDoc(memberRef, {
+      slots: requestedSlots,
+      hasReceived,
+    })
+
+    const totalSlots = Math.max(0, (groupData.totalSlots || 0) + delta)
+    await updateDoc(doc(db, 'groups', groupId), { totalSlots })
+  }
+
   async function removeMember(groupId, memberId) {
     const groupDoc = await getDoc(doc(db, 'groups', groupId))
     if (!groupDoc.exists()) throw new Error('Group not found')
@@ -505,7 +581,8 @@ export const useGroupsStore = defineStore('groups', () => {
     })
 
     const totalMembers = Math.max(0, (groupDoc.data().totalMembers || 1) - 1)
-    await updateDoc(doc(db, 'groups', groupId), { totalMembers })
+    const totalSlots = Math.max(0, (groupDoc.data().totalSlots || 1) - memberSlots(memberDoc.data()))
+    await updateDoc(doc(db, 'groups', groupId), { totalMembers, totalSlots })
 
     const membersSnapshot = await getDocs(collection(db, 'groups', groupId, 'members'))
     const remaining = membersSnapshot.docs
@@ -539,7 +616,7 @@ export const useGroupsStore = defineStore('groups', () => {
     const currentCycle = groupData.currentCycle || 0
     if (currentCycle !== 0) {
       const eligible = approved.filter((m) => (m.joinedCycle ?? 1) <= Math.max(currentCycle, 1))
-      const rotationConcluded = eligible.length > 0 && eligible.every((m) => m.hasReceived)
+      const rotationConcluded = eligible.length > 0 && eligible.every((m) => memberReceived(m) >= memberSlots(m))
       if (!rotationConcluded) {
         throw new Error(
           'The rotation order can only be changed before the first cycle or after every member has received the pot.',
@@ -569,7 +646,6 @@ export const useGroupsStore = defineStore('groups', () => {
     if (!groupDoc.exists()) throw new Error('Group not found')
     const groupData = groupDoc.data()
     const currentCycle = groupData.currentCycle || 0
-    const recipientId = groupData.currentCycleRecipientId || null
 
     const membersSnapshot = await getDocs(collection(db, 'groups', groupId, 'members'))
     const allMembers = membersSnapshot.docs.map((d) => ({ id: d.id, ref: d.ref, ...d.data() }))
@@ -577,21 +653,20 @@ export const useGroupsStore = defineStore('groups', () => {
       (m) => m.status === 'approved' && !m.leftAt && (m.joinedCycle ?? 1) <= Math.max(currentCycle, 1),
     )
 
-    if (currentCycle >= 1 && recipientId) {
-      const recipient = allMembers.find((m) => m.id === recipientId)
-      if (!recipient || !recipient.hasReceived) {
-        throw new Error(
-          'The current cycle is still in progress. The designated recipient must be marked as paid before a new cycle can start.',
-        )
-      }
+    if (currentCycle >= 1 && groupData.currentCyclePayoutConfirmed !== true) {
+      throw new Error(
+        'The current cycle is still in progress. The designated recipient must be marked as paid before a new cycle can start.',
+      )
     }
 
     const newCycle = currentCycle + 1
-    const rotationConcluded = eligible.length > 0 && eligible.every((m) => m.hasReceived)
+    const rotationConcluded =
+      eligible.length > 0 && eligible.every((m) => memberReceived(m) >= memberSlots(m))
 
     if (rotationConcluded) {
       for (const m of eligible) {
-        await updateDoc(m.ref, { hasReceived: false, joinedCycle: newCycle })
+        await updateDoc(m.ref, { receivedCount: 0, hasReceived: false, joinedCycle: newCycle })
+        m.receivedCount = 0
         m.hasReceived = false
         m.joinedCycle = newCycle
       }
@@ -602,8 +677,8 @@ export const useGroupsStore = defineStore('groups', () => {
     }
 
     const nextEligible = eligible
-      .filter((m) => !m.hasReceived)
-      .sort((a, b) => a.rotationOrder - b.rotationOrder)
+      .filter((m) => memberReceived(m) < memberSlots(m))
+      .sort((a, b) => nextPosition(a) - nextPosition(b))
 
     const recipient = nextEligible[0] || null
     const newRotation = (groupData.rotation || 1) + (rotationConcluded ? 1 : 0)
@@ -613,6 +688,7 @@ export const useGroupsStore = defineStore('groups', () => {
       currentCycleStartDate: new Date(),
       rotation: newRotation,
       currentCycleRecipientId: recipient?.id || null,
+      currentCyclePayoutConfirmed: false,
     })
 
     if (recipient) {
@@ -657,7 +733,7 @@ export const useGroupsStore = defineStore('groups', () => {
       const eligible = membersSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((m) => m.status === 'approved' && !m.leftAt && (m.joinedCycle ?? 1) <= groupData.currentCycle)
-      const rotationConcluded = eligible.length > 0 && eligible.every((m) => m.hasReceived)
+      const rotationConcluded = eligible.length > 0 && eligible.every((m) => memberReceived(m) >= memberSlots(m))
       if (!rotationConcluded) {
         throw new Error('Cannot archive: the current rotation is still in progress. Every member must receive the pot first.')
       }
@@ -801,6 +877,7 @@ export const useGroupsStore = defineStore('groups', () => {
     approveMember,
     rejectMember,
     removeMember,
+    setMemberSlots,
     moveMemberRotation,
     startNewCycle,
     archiveGroup,

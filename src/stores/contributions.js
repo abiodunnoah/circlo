@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { db, auth } from '@/firebase'
-import { collection, doc, query, where, getDoc, getDocs, setDoc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore'
+import { collection, doc, query, where, getDoc, getDocs, setDoc, updateDoc, deleteField, onSnapshot, serverTimestamp } from 'firebase/firestore'
 import { createNotification } from '@/stores/notifications'
 
 function toTime(value) {
@@ -81,7 +81,8 @@ export const useContributionsStore = defineStore('contributions', () => {
       throw new Error('This member is not an approved member of the group')
     }
 
-    const amount = Number(groupData.contributionAmount || 0)
+    const slots = Math.max(1, Number(memberDoc.data().slots) || 1)
+    const amount = Number(groupData.contributionAmount || 0) * slots
     const docId = contributionDocId(groupId, userId, cycle)
 
     await setDoc(doc(db, 'groups', groupId, 'contributions', docId), {
@@ -140,7 +141,12 @@ export const useContributionsStore = defineStore('contributions', () => {
     const memberDoc = await getDoc(memberRef)
     if (!memberDoc.exists()) throw new Error('Member not found')
 
-    await updateDoc(memberRef, { hasReceived: true })
+    const slots = Math.max(1, Number(memberDoc.data().slots) || 1)
+    const receivedCount = (memberDoc.data().receivedCount || 0) + 1
+    const hasReceived = receivedCount >= slots
+
+    await updateDoc(memberRef, { receivedCount, hasReceived })
+    await updateDoc(doc(db, 'groups', groupId), { currentCyclePayoutConfirmed: true })
 
     await setDoc(doc(db, 'groups', groupId, 'cycles', String(cycle)), {
       receivedAt: serverTimestamp(),
@@ -168,7 +174,17 @@ export const useContributionsStore = defineStore('contributions', () => {
     const memberDoc = await getDoc(memberRef)
     if (!memberDoc.exists()) throw new Error('Member not found')
 
-    await updateDoc(memberRef, { hasReceived: false })
+    const slots = Math.max(1, Number(memberDoc.data().slots) || 1)
+    const receivedCount = Math.max(0, (memberDoc.data().receivedCount || 0) - 1)
+    const hasReceived = receivedCount >= slots
+
+    await updateDoc(memberRef, { receivedCount, hasReceived })
+    await updateDoc(doc(db, 'groups', groupId), { currentCyclePayoutConfirmed: false })
+
+    await setDoc(doc(db, 'groups', groupId, 'cycles', String(cycle)), {
+      receivedAt: deleteField(),
+      receivedBy: deleteField(),
+    }, { merge: true })
   }
 
   async function voidContribution(groupId, userId, cycle) {

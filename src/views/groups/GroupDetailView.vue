@@ -21,6 +21,14 @@ function formatCycleDate(timestamp) {
   return ''
 }
 
+function memberSlots(m) {
+  return Math.max(1, Number(m?.slots) || 1)
+}
+
+function nextPosition(m) {
+  return (m?.rotationOrder || 0) + (m?.receivedCount || 0)
+}
+
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -45,6 +53,10 @@ const showDeleteGroupModal = ref(false)
 
 const selectedCycle = ref(0)
 const cycleOptions = ref([])
+const pendingSlots = ref({})
+const editingSlotsMember = ref(null)
+const editSlotsValue = ref(1)
+const showSlotsModal = ref(false)
 let unsubscribe = null
 let unsubscribeContributions = null
 
@@ -69,12 +81,12 @@ const rotationConcluded = computed(() =>
   eligibleMembers.value.length > 0 && eligibleMembers.value.every((m) => m.hasReceived),
 )
 
+const cyclePayoutConfirmed = computed(() => !!groupsStore.currentGroup?.currentCyclePayoutConfirmed)
+
 const cycleConcluded = computed(() => {
   if (currentCycle.value === 0) return true
-  const recipientId = groupsStore.currentGroup?.currentCycleRecipientId
-  if (!recipientId) return true
-  const recipient = groupsStore.approvedMembers.find((m) => m.id === recipientId)
-  return recipient ? recipient.hasReceived : false
+  if (!groupsStore.currentGroup?.currentCycleRecipientId) return true
+  return cyclePayoutConfirmed.value
 })
 
 const canStartCycle = computed(() => isAdmin.value && cycleConcluded.value)
@@ -93,8 +105,8 @@ function canMove(member, direction) {
 
 const nextMember = computed(() => {
   const unreceived = eligibleMembers.value
-    .filter((m) => !m.hasReceived)
-    .sort((a, b) => a.rotationOrder - b.rotationOrder)
+    .filter((m) => (m.receivedCount || 0) < memberSlots(m))
+    .sort((a, b) => nextPosition(a) - nextPosition(b))
   return unreceived[0]
 })
 
@@ -113,7 +125,7 @@ const contributionRows = computed(() => {
       contribution,
       isVoid,
       isPaid,
-      isOwing: m.hasReceived && !isPaid && !isVoid,
+      isOwing: (m.receivedCount || 0) > 0 && !isPaid && !isVoid,
     }
   })
   return rows.sort((a, b) => {
@@ -144,8 +156,7 @@ const canConfirmPayout = computed(() => {
   if (currentCycle.value === 0) return false
   const recipientId = groupsStore.currentGroup?.currentCycleRecipientId
   if (!recipientId) return false
-  const recipient = groupsStore.approvedMembers.find((m) => m.id === recipientId)
-  if (!recipient || recipient.hasReceived) return false
+  if (cyclePayoutConfirmed.value) return false
   if (selectedCycle.value !== currentCycle.value) return false
   return unpaidDuesCount.value === 0
 })
@@ -207,7 +218,8 @@ function shareToWhatsApp() {
 
 async function handleApprove(member) {
   try {
-    await groupsStore.approveMember(groupId, member.id)
+    const slots = Number(pendingSlots.value[member.id]) || 1
+    await groupsStore.approveMember(groupId, member.id, slots)
     toast.show(`${member.displayName} approved`, 'success')
   } catch (e) {
     toast.show(e.message, 'error')
@@ -235,6 +247,24 @@ async function handleRemove() {
     toast.show(`${memberToRemove.value.displayName} removed`, 'info')
     showRemoveModal.value = false
     memberToRemove.value = null
+  } catch (e) {
+    toast.show(e.message, 'error')
+  }
+}
+
+function openSlotsModal(member) {
+  editingSlotsMember.value = member
+  editSlotsValue.value = memberSlots(member)
+  showSlotsModal.value = true
+}
+
+async function confirmEditSlots() {
+  if (!editingSlotsMember.value) return
+  try {
+    await groupsStore.setMemberSlots(groupId, editingSlotsMember.value.id, editSlotsValue.value)
+    toast.show(`${editingSlotsMember.value.displayName}'s slots updated`, 'success')
+    showSlotsModal.value = false
+    editingSlotsMember.value = null
   } catch (e) {
     toast.show(e.message, 'error')
   }
@@ -398,6 +428,7 @@ async function handleVoid(member) {
               {{ formatNaira(groupsStore.currentGroup.contributionAmount) }}/{{ groupsStore.currentGroup.frequency }}
               &middot; Cycle {{ groupsStore.currentGroup.currentCycle }}
               &middot; {{ groupsStore.currentGroup.totalMembers }} members
+              &middot; {{ groupsStore.currentGroup.totalSlots || groupsStore.currentGroup.totalMembers }} slots
             </p>
             <p v-if="groupsStore.currentGroup.currentCycleStartDate" class="text-xs text-muted mt-0.5">
               Cycle started {{ formatCycleDate(groupsStore.currentGroup.currentCycleStartDate) }}
@@ -441,6 +472,7 @@ async function handleVoid(member) {
                 <span v-if="m.userId === groupsStore.currentGroup.adminId" class="text-xs text-accent-600 font-medium">(admin)</span>
               </p>
               <p class="text-xs text-muted truncate">{{ m.email }}</p>
+              <p class="text-xs text-accent-600 truncate">{{ memberSlots(m) === 1 ? '1 slot' : `${memberSlots(m)} slots` }} &middot; received {{ m.receivedCount || 0 }}/{{ memberSlots(m) }}</p>
             </div>
             <template v-if="(m.joinedCycle ?? 1) > currentCycle">
               <AppBadge variant="default">Joins cycle {{ m.joinedCycle }}</AppBadge>
@@ -454,6 +486,7 @@ async function handleVoid(member) {
               <button :disabled="!canMove(m, 'up')" class="text-[10px] leading-none text-slate-500 hover:text-primary-700 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" title="Move up in rotation" @click="handleMove(m, 'up')">▲</button>
               <button :disabled="!canMove(m, 'down')" class="text-[10px] leading-none text-slate-500 hover:text-primary-700 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" title="Move down in rotation" @click="handleMove(m, 'down')">▼</button>
             </div>
+            <button v-if="isAdmin && canReorder" class="text-xs text-primary-700 hover:text-primary-800 cursor-pointer" @click="openSlotsModal(m)">Slots</button>
             <button v-if="isAdmin && canRemoveMembers && m.userId !== groupsStore.currentGroup.adminId" class="text-xs text-red-600 hover:text-red-700 cursor-pointer" @click="openRemoveModal(m)">Remove</button>
           </div>
           <div v-if="!groupsStore.approvedMembers.length" class="px-5 py-8 text-center text-sm text-muted">No members yet</div>
@@ -466,6 +499,12 @@ async function handleVoid(member) {
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-slate-900">{{ r.displayName }}</p>
               <p class="text-xs text-muted">{{ r.email }}</p>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <label class="text-xs text-muted">Slots</label>
+              <select v-model="pendingSlots[r.id]" class="rounded-lg border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500">
+                <option v-for="n in 10" :key="n" :value="n">{{ n }}</option>
+              </select>
             </div>
             <div class="flex gap-2">
               <button class="bg-primary-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-primary-700 cursor-pointer" @click="handleApprove(r)">Approve</button>
@@ -532,15 +571,15 @@ async function handleVoid(member) {
                   <AppBadge v-else-if="row.isPaid" variant="paid">Paid</AppBadge>
                   <AppBadge v-else variant="pending">Unpaid</AppBadge>
                 </td>
-                <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ row.contribution ? formatNaira(row.contribution.amount) : formatNaira(groupsStore.currentGroup.contributionAmount) }}</td>
+                <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ row.contribution ? formatNaira(row.contribution.amount) : formatNaira(groupsStore.currentGroup.contributionAmount * memberSlots(row.member)) }}</td>
                 <td class="px-5 py-3 text-muted hidden md:table-cell">{{ row.contribution?.paidAt ? new Date(row.contribution.paidAt.toMillis ? row.contribution.paidAt.toMillis() : row.contribution.paidAt).toLocaleDateString() : '—' }}</td>
                 <td v-if="isAdmin" class="px-5 py-3 text-right">
                   <button v-if="!row.isPaid && !row.isVoid" class="bg-primary-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-primary-700 cursor-pointer" @click="openMarkPaidModal(row.member)">Mark Paid</button>
                   <button v-if="!row.isPaid && !row.isVoid && selectedCycle === currentCycle" class="ml-1 text-xs text-amber-600 hover:text-amber-700 cursor-pointer" @click="handleRemindSingle(row.member)">Remind</button>
                   <button v-else-if="row.isPaid" class="text-xs text-red-600 hover:text-red-700 cursor-pointer" @click="handleVoid(row.member)">Void</button>
-                  <button v-if="!row.member.hasReceived && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && canConfirmPayout" class="ml-2 bg-accent-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent-700 cursor-pointer" @click="openPayoutModal(row.member, false)">Confirm Payout</button>
-                  <button v-if="!row.member.hasReceived && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && !canConfirmPayout && unpaidDuesCount > 0" class="ml-2 text-xs text-amber-700 hover:text-amber-800 font-medium cursor-pointer" title="Some members haven't paid yet — force confirm anyway" @click="openPayoutModal(row.member, true)">Force Payout</button>
-                  <button v-if="row.member.hasReceived && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId" class="ml-2 text-xs text-accent-700 hover:text-accent-800 cursor-pointer" @click="handleUndoPayout(row.member)">Undo Payout</button>
+                  <button v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && canConfirmPayout" class="ml-2 bg-accent-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent-700 cursor-pointer" @click="openPayoutModal(row.member, false)">Confirm Payout</button>
+                  <button v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && !canConfirmPayout && unpaidDuesCount > 0" class="ml-2 text-xs text-amber-700 hover:text-amber-800 font-medium cursor-pointer" title="Some members haven't paid yet — force confirm anyway" @click="openPayoutModal(row.member, true)">Force Payout</button>
+                  <button v-if="cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId" class="ml-2 text-xs text-accent-700 hover:text-accent-800 cursor-pointer" @click="handleUndoPayout(row.member)">Undo Payout</button>
                 </td>
               </tr>
             </tbody>
@@ -601,11 +640,30 @@ async function handleVoid(member) {
     <AppModal :open="showMarkPaidModal" title="Mark as Paid" size="sm" @close="showMarkPaidModal = false">
       <p class="text-sm text-muted mb-4">
         Confirm that <span class="font-medium text-slate-900">{{ memberToMarkPaid?.displayName }}</span> paid
-        <span class="font-medium text-slate-900">{{ formatNaira(groupsStore.currentGroup?.contributionAmount) }}</span> for Cycle {{ selectedCycle }}.
+        <span class="font-medium text-slate-900">{{ formatNaira(groupsStore.currentGroup?.contributionAmount * memberSlots(memberToMarkPaid)) }}</span> for Cycle {{ selectedCycle }}.
+      </p>
+      <p v-if="memberSlots(memberToMarkPaid) > 1" class="text-xs text-accent-600 mb-4">
+        This member holds {{ memberSlots(memberToMarkPaid) }} slots and pays {{ memberSlots(memberToMarkPaid) }}× per cycle.
       </p>
       <div class="flex justify-end gap-2">
         <button class="bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showMarkPaidModal = false">Cancel</button>
         <button class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer" @click="confirmMarkPaid">Mark Paid</button>
+      </div>
+    </AppModal>
+
+    <AppModal :open="showSlotsModal" title="Edit Slots" size="sm" @close="showSlotsModal = false">
+      <p class="text-sm text-muted mb-4">
+        Set the number of slots for <span class="font-medium text-slate-900">{{ editingSlotsMember?.displayName }}</span>. A member with N slots pays N× each cycle and receives the pot N times per rotation.
+      </p>
+      <div class="flex items-center gap-2 mb-4">
+        <label class="text-sm text-muted">Slots</label>
+        <select v-model="editSlotsValue" class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          <option v-for="n in 10" :key="n" :value="n">{{ n }}</option>
+        </select>
+      </div>
+      <div class="flex justify-end gap-2">
+        <button class="bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showSlotsModal = false">Cancel</button>
+        <button class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer" @click="confirmEditSlots">Save</button>
       </div>
     </AppModal>
 

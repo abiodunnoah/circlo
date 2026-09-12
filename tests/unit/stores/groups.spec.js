@@ -232,7 +232,7 @@ describe('groups store', () => {
   it('startNewCycle advances the rotation when all eligible members have received', async () => {
     mocks.mockGetDoc.mockResolvedValueOnce({
       exists: () => true,
-      data: () => ({ currentCycle: 2, currentCycleRecipientId: 'b', rotation: 1 }),
+      data: () => ({ currentCycle: 2, currentCycleRecipientId: 'b', rotation: 1, currentCyclePayoutConfirmed: true }),
     })
     mocks.mockGetDocs.mockResolvedValueOnce({
       docs: [
@@ -257,7 +257,7 @@ describe('groups store', () => {
   it('startNewCycle advances within a rotation without resetting received status', async () => {
     mocks.mockGetDoc.mockResolvedValueOnce({
       exists: () => true,
-      data: () => ({ currentCycle: 1, currentCycleRecipientId: 'a', rotation: 1 }),
+      data: () => ({ currentCycle: 1, currentCycleRecipientId: 'a', rotation: 1, currentCyclePayoutConfirmed: true }),
     })
     mocks.mockGetDocs.mockResolvedValueOnce({
       docs: [
@@ -443,5 +443,114 @@ describe('groups store', () => {
     expect(mocks.mockUpdateDoc).toHaveBeenCalledTimes(2)
     expect(mocks.mockUpdateDoc.mock.calls[0][1]).toEqual({ displayName: 'New Name' })
     expect(mocks.mockUpdateDoc.mock.calls[1][1]).toEqual({ displayName: 'New Name' })
+  })
+
+  it('approveMember accepts a slots parameter and updates totalSlots', async () => {
+    mocks.mockGetDoc
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ userId: 'user-2', status: 'pending' }) })
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ currentCycle: 0, totalMembers: 3, totalSlots: 3, pendingCount: 1 }) })
+    const store = useGroupsStore()
+
+    await store.approveMember('group-1', 'user-2', 3)
+
+    const memberUpdate = mocks.mockUpdateDoc.mock.calls[0][1]
+    expect(memberUpdate.slots).toBe(3)
+    expect(memberUpdate.receivedCount).toBe(0)
+
+    const groupUpdate = mocks.mockUpdateDoc.mock.calls[1][1]
+    expect(groupUpdate.totalMembers).toBe(4)
+    expect(groupUpdate.totalSlots).toBe(6)
+  })
+
+  it('approveMember clamps slots to the 1..10 range', async () => {
+    mocks.mockGetDoc
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ userId: 'user-2', status: 'pending' }) })
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ currentCycle: 0, totalMembers: 1, totalSlots: 1, pendingCount: 1 }) })
+    const store = useGroupsStore()
+
+    await store.approveMember('group-1', 'user-2', 99)
+
+    const memberUpdate = mocks.mockUpdateDoc.mock.calls[0][1]
+    expect(memberUpdate.slots).toBe(10)
+  })
+
+  it('setMemberSlots updates slots, hasReceived, and totalSlots', async () => {
+    mocks.mockGetDoc
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 0, totalSlots: 2 }) })
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ status: 'approved', slots: 1, receivedCount: 0 }) })
+    const store = useGroupsStore()
+
+    await store.setMemberSlots('group-1', 'user-2', 4)
+
+    const memberUpdate = mocks.mockUpdateDoc.mock.calls[0][1]
+    expect(memberUpdate.slots).toBe(4)
+    expect(memberUpdate.hasReceived).toBe(false)
+
+    const groupUpdate = mocks.mockUpdateDoc.mock.calls[1][1]
+    expect(groupUpdate.totalSlots).toBe(5)
+  })
+
+  it('setMemberSlots rejects mid-rotation changes', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ adminId: 'user-1', currentCycle: 2, totalSlots: 2 }),
+    })
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'a', data: () => ({ status: 'approved', joinedCycle: 1, hasReceived: true }) },
+        { id: 'b', data: () => ({ status: 'approved', joinedCycle: 1, hasReceived: false }) },
+      ],
+    })
+    const store = useGroupsStore()
+
+    await expect(store.setMemberSlots('group-1', 'user-2', 2)).rejects.toThrow('only be changed')
+    expect(mocks.mockUpdateDoc).not.toHaveBeenCalled()
+  })
+
+  it('startNewCycle re-selects a multi-slot member until all their slots are received', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ currentCycle: 2, currentCycleRecipientId: 'b', rotation: 1, currentCyclePayoutConfirmed: true }),
+    })
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'a', ref: { id: 'a' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, rotationOrder: 1, slots: 1, receivedCount: 1 }) },
+        { id: 'b', ref: { id: 'b' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, rotationOrder: 2, slots: 2, receivedCount: 1 }) },
+        { id: 'c', ref: { id: 'c' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, rotationOrder: 4, slots: 1, receivedCount: 0 }) },
+      ],
+    })
+    const store = useGroupsStore()
+
+    await store.startNewCycle('group-1')
+
+    const groupUpdate = mocks.mockUpdateDoc.mock.calls[0][1]
+    expect(groupUpdate.currentCycle).toBe(3)
+    expect(groupUpdate.currentCycleRecipientId).toBe('b')
+    expect(groupUpdate.rotation).toBe(1)
+  })
+
+  it('startNewCycle concludes a rotation only when all slots are received', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ currentCycle: 3, currentCycleRecipientId: 'b', rotation: 1, currentCyclePayoutConfirmed: true }),
+    })
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'a', ref: { id: 'a' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, rotationOrder: 1, slots: 1, receivedCount: 1 }) },
+        { id: 'b', ref: { id: 'b' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, rotationOrder: 2, slots: 2, receivedCount: 2 }) },
+        { id: 'c', ref: { id: 'c' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, rotationOrder: 4, slots: 1, receivedCount: 1 }) },
+      ],
+    })
+    const store = useGroupsStore()
+
+    await store.startNewCycle('group-1')
+
+    const memberUpdate = mocks.mockUpdateDoc.mock.calls[0][1]
+    expect(memberUpdate.receivedCount).toBe(0)
+    expect(memberUpdate.hasReceived).toBe(false)
+
+    const groupUpdate = mocks.mockUpdateDoc.mock.calls[3][1]
+    expect(groupUpdate.rotation).toBe(2)
+    expect(groupUpdate.currentCycleRecipientId).toBe('a')
   })
 })

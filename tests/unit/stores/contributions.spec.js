@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   mockDoc: vi.fn((...args) => ({ type: 'doc', args })),
   mockOnSnapshot: vi.fn(),
   mockServerTimestamp: vi.fn(() => 'TIMESTAMP'),
+  mockDeleteField: vi.fn(() => 'DELETED'),
 }))
 
 vi.mock('@/firebase', () => ({
@@ -32,6 +33,7 @@ vi.mock('firebase/firestore', () => ({
   doc: mocks.mockDoc,
   onSnapshot: mocks.mockOnSnapshot,
   serverTimestamp: mocks.mockServerTimestamp,
+  deleteField: mocks.mockDeleteField,
 }))
 
 import { useContributionsStore } from '@/stores/contributions'
@@ -96,10 +98,10 @@ describe('contributions store', () => {
 
     await store.confirmPayout('group-1', 'user-2', 3, true)
 
-    expect(mocks.mockUpdateDoc).toHaveBeenCalledWith(
-      expect.anything(),
-      { hasReceived: true },
-    )
+    const memberUpdate = mocks.mockUpdateDoc.mock.calls[0][1]
+    expect(memberUpdate).toEqual({ receivedCount: 1, hasReceived: true })
+    const groupUpdate = mocks.mockUpdateDoc.mock.calls[1][1]
+    expect(groupUpdate).toEqual({ currentCyclePayoutConfirmed: true })
   })
 
   it('confirmPayout rejects when the member is not the current cycle recipient', async () => {
@@ -118,7 +120,10 @@ describe('contributions store', () => {
 
     await store.undoPayout('group-1', 'user-2', 3)
 
-    expect(mocks.mockUpdateDoc).toHaveBeenCalledWith(expect.anything(), { hasReceived: false })
+    const memberUpdate = mocks.mockUpdateDoc.mock.calls[0][1]
+    expect(memberUpdate).toEqual({ receivedCount: 0, hasReceived: false })
+    const groupUpdate = mocks.mockUpdateDoc.mock.calls[1][1]
+    expect(groupUpdate).toEqual({ currentCyclePayoutConfirmed: false })
   })
 
   it('undoPayout rejects when the member is not the current cycle recipient', async () => {
@@ -207,5 +212,29 @@ describe('contributions store', () => {
     expect(store.myContributions).toHaveLength(2)
     expect(store.myContributions[0]).toMatchObject({ groupName: 'Family Savings', memberName: 'Chidi' })
     expect(store.myTotalContributed).toBe(10000)
+  })
+
+  it('markAsPaid scales the amount by the member slot count', async () => {
+    mocks.mockGetDoc
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'admin-1', contributionAmount: 5000, currentCycle: 3, currentCycleRecipientId: 'user-3' }) })
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ userId: 'user-2', status: 'approved', slots: 3 }) })
+    const store = useContributionsStore()
+
+    await store.markAsPaid('group-1', 'user-2', 3)
+
+    const setDocCall = mocks.mockSetDoc.mock.calls[0]
+    expect(setDocCall[1]).toMatchObject({ userId: 'user-2', cycle: 3, amount: 15000, status: 'paid' })
+  })
+
+  it('confirmPayout increments receivedCount for a multi-slot member without completing them', async () => {
+    mocks.mockGetDoc
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'admin-1', currentCycle: 3, currentCycleRecipientId: 'user-2' }) })
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ userId: 'user-2', status: 'approved', slots: 2, receivedCount: 0 }) })
+    const store = useContributionsStore()
+
+    await store.confirmPayout('group-1', 'user-2', 3, true)
+
+    const memberUpdate = mocks.mockUpdateDoc.mock.calls[0][1]
+    expect(memberUpdate).toEqual({ receivedCount: 1, hasReceived: false })
   })
 })
