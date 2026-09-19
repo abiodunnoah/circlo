@@ -1,10 +1,15 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { ChevronRight } from '@lucide/vue'
 import { useGroupsStore } from '@/stores/groups'
 import { useToast } from '@/composables/useToast'
 import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import AppAlert from '@/components/common/AppAlert.vue'
+import AppAvatar from '@/components/common/AppAvatar.vue'
+import AppProgress from '@/components/common/AppProgress.vue'
+import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
 import { formatNaira } from '@/utils/format'
 
 const router = useRouter()
@@ -28,54 +33,83 @@ function openGroup(g) {
   router.push({ name: 'GroupDetail', params: { id: g.id } })
 }
 
+function retryLoadGroups() {
+  groupsStore.unsubscribeUserGroups()
+  groupsStore.subscribeUserGroups()
+}
 </script>
 
 <template>
   <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-slate-900">Groups</h1>
+      <h1 class="text-2xl font-bold text-fg">Groups</h1>
       <button class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer" @click="router.push({ name: 'CreateGroup' })">Create Group</button>
     </div>
 
-    <div class="flex gap-1 bg-slate-100 rounded-lg p-1 mb-6 w-fit">
-      <button class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer" :class="tab === 'member' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'" @click="tab = 'member'">My Groups</button>
-      <button class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer" :class="tab === 'admin' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'" @click="tab = 'admin'">Admin</button>
+    <div class="flex gap-1 bg-line rounded-lg p-1 mb-6 w-fit">
+      <button class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer" :class="tab === 'member' ? 'bg-card text-fg shadow-sm' : 'text-fg-3 hover:text-fg'" @click="tab = 'member'">My Groups</button>
+      <button class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer" :class="tab === 'admin' ? 'bg-card text-fg shadow-sm' : 'text-fg-3 hover:text-fg'" @click="tab = 'admin'">Admin</button>
     </div>
 
     <div v-if="groupsStore.loading" aria-label="Loading..." aria-busy="true" class="space-y-3">
-      <div v-for="i in 5" :key="i" class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between">
-        <div>
-          <AppSkeleton class="h-4 w-40 mb-2" />
-          <AppSkeleton class="h-3 w-32" />
+      <div v-for="i in 5" :key="i" class="bg-card rounded-xl border border-line shadow-sm p-4">
+        <div class="flex items-center gap-3">
+          <AppSkeleton circle class="w-12 h-12 shrink-0" />
+          <div class="flex-1 min-w-0">
+            <AppSkeleton class="h-4 w-40 mb-2" />
+            <AppSkeleton class="h-3 w-32" />
+          </div>
+          <div class="text-right">
+            <AppSkeleton class="h-4 w-16 mb-2 ml-auto" />
+            <AppSkeleton class="h-3 w-20 ml-auto" />
+          </div>
         </div>
-        <div class="text-right">
-          <AppSkeleton class="h-4 w-16 mb-2 ml-auto" />
-          <AppSkeleton class="h-3 w-20 ml-auto" />
-        </div>
+        <AppSkeleton class="h-2 w-full rounded-full mt-3" />
       </div>
     </div>
 
-    <div v-else-if="groupsStore.error && !groupsStore.groups.length" class="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-      <p class="text-sm font-medium text-red-800 mb-1">Couldn't load your groups</p>
-      <p class="text-sm text-red-700 mb-2">{{ groupsStore.error }}</p>
-      <button class="text-sm font-medium text-red-700 underline cursor-pointer" @click="groupsStore.unsubscribeUserGroups(); groupsStore.subscribeUserGroups()">Try again</button>
-    </div>
+    <AppAlert
+      v-else-if="groupsStore.error && !groupsStore.groups.length"
+      variant="danger"
+      title="Couldn't load your groups"
+      action-label="Try again"
+      class="mb-6"
+      @action="retryLoadGroups"
+    >
+      {{ groupsStore.error }}
+    </AppAlert>
 
     <div v-else-if="tab === 'member'" class="space-y-3">
       <template v-if="memberGroups.length">
-        <div v-for="g in memberGroups" :key="g.id" class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between hover:shadow-md transition-shadow cursor-pointer" @click="openGroup(g)">
-          <div>
-            <h3 class="font-semibold text-slate-900">
-              {{ g.name }}
-              <span v-if="g.membershipStatus === 'pending'" class="ml-2 text-xs bg-yellow-100 text-yellow-800 rounded-full px-2 py-0.5 font-medium align-middle">Pending approval</span>
-              <span v-else-if="g.membershipStatus === 'rejected'" class="ml-2 text-xs bg-red-100 text-red-800 rounded-full px-2 py-0.5 font-medium align-middle">Declined</span>
-            </h3>
-            <p class="text-sm text-muted">{{ g.frequency }} &middot; {{ g.totalMembers }} members</p>
+        <div
+          v-for="g in memberGroups"
+          :key="g.id"
+          class="bg-card rounded-xl border border-line shadow-sm p-4 hover:shadow-md transition-shadow cursor-pointer"
+          @click="openGroup(g)"
+        >
+          <div class="flex items-center gap-3">
+            <AppAvatar :name="g.name" :id="g.id" size="lg" />
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <h3 class="font-semibold text-fg truncate">{{ g.name }}</h3>
+                <AppStatusBadge v-if="g.membershipStatus === 'pending'" status="pending" label="Pending" />
+                <AppStatusBadge v-else-if="g.membershipStatus === 'rejected'" status="rejected" label="Declined" />
+              </div>
+              <p class="text-sm text-muted">{{ g.frequency }} &middot; {{ g.totalMembers }} members</p>
+            </div>
+            <div class="text-right shrink-0">
+              <p class="text-sm font-medium text-fg tabular-nums">Cycle {{ g.currentCycle }}</p>
+              <p class="text-sm text-muted tabular-nums">{{ formatNaira(g.contributionAmount) }}/ea</p>
+            </div>
+            <ChevronRight class="w-4 h-4 text-muted shrink-0 hidden sm:block" />
           </div>
-          <div class="text-right">
-            <p class="text-sm font-medium">Cycle {{ g.currentCycle }}</p>
-            <p class="text-sm text-muted">{{ formatNaira(g.contributionAmount) }}/ea</p>
-          </div>
+          <AppProgress
+            :value="g.currentCycle"
+            :max="g.totalSlots || g.totalMembers || 1"
+            :label="`Rotation · Cycle ${g.currentCycle} of ${g.totalSlots || g.totalMembers || 1}`"
+            size="sm"
+            class="mt-3"
+          />
         </div>
       </template>
       <AppEmpty
@@ -89,15 +123,34 @@ function openGroup(g) {
 
     <div v-else class="space-y-3">
       <template v-if="adminGroups.length">
-        <div v-for="g in adminGroups" :key="g.id" class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between hover:shadow-md transition-shadow cursor-pointer" @click="router.push({ name: 'GroupDetail', params: { id: g.id } })">
-          <div>
-            <h3 class="font-semibold text-slate-900">{{ g.name }}</h3>
-            <p class="text-sm text-muted">{{ g.frequency }} &middot; {{ g.totalMembers }} members</p>
+        <div
+          v-for="g in adminGroups"
+          :key="g.id"
+          class="bg-card rounded-xl border border-line shadow-sm p-4 hover:shadow-md transition-shadow cursor-pointer"
+          @click="router.push({ name: 'GroupDetail', params: { id: g.id } })"
+        >
+          <div class="flex items-center gap-3">
+            <AppAvatar :name="g.name" :id="g.id" size="lg" />
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <h3 class="font-semibold text-fg truncate">{{ g.name }}</h3>
+                <span class="text-xs bg-accent-100 text-accent-700 rounded-full px-2 py-0.5 font-medium shrink-0">Admin</span>
+              </div>
+              <p class="text-sm text-muted">{{ g.frequency }} &middot; {{ g.totalMembers }} members</p>
+            </div>
+            <div class="text-right shrink-0">
+              <p class="text-sm font-medium text-fg tabular-nums">Cycle {{ g.currentCycle }}</p>
+              <p class="text-sm text-muted tabular-nums">{{ formatNaira(g.contributionAmount) }}/ea</p>
+            </div>
+            <ChevronRight class="w-4 h-4 text-muted shrink-0 hidden sm:block" />
           </div>
-          <div class="text-right">
-            <p class="text-sm font-medium">Cycle {{ g.currentCycle }}</p>
-            <p class="text-sm text-muted">{{ formatNaira(g.contributionAmount) }}/ea</p>
-          </div>
+          <AppProgress
+            :value="g.currentCycle"
+            :max="g.totalSlots || g.totalMembers || 1"
+            :label="`Rotation · Cycle ${g.currentCycle} of ${g.totalSlots || g.totalMembers || 1}`"
+            size="sm"
+            class="mt-3"
+          />
         </div>
       </template>
       <AppEmpty

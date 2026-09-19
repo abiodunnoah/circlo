@@ -6,7 +6,7 @@ defineProps({
 
 <template>
   <div
-    class="animate-pulse bg-slate-200"
+    class="animate-pulse bg-line"
     :class="circle ? 'rounded-full' : 'rounded-md'"
   />
 </template>

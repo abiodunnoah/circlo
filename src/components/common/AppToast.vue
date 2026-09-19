@@ -1,7 +1,10 @@
 <script setup>
 import { useToast } from '@/composables/useToast'
+import { CheckCircle2, XCircle, AlertTriangle, Info, X } from '@lucide/vue'
 
 const { toasts, dismiss } = useToast()
+
+const icons = { success: CheckCircle2, error: XCircle, info: Info, warning: AlertTriangle }
 </script>
 
 <template>
@@ -11,17 +14,16 @@ const { toasts, dismiss } = useToast()
       :key="toast.id"
       class="pointer-events-auto flex items-start gap-3 rounded-lg px-4 py-3 shadow-lg text-sm font-medium transition-all animate-slide-in"
       :class="{
-        'bg-white text-slate-800 border border-slate-200': toast.type === 'info',
-        'bg-green-600 text-white': toast.type === 'success',
-        'bg-red-600 text-white': toast.type === 'error',
+        'bg-card text-fg border border-line': toast.type === 'info',
+        'bg-success-600 text-white': toast.type === 'success',
+        'bg-danger-600 text-white': toast.type === 'error',
         'bg-accent-500 text-white': toast.type === 'warning',
       }"
     >
+      <component :is="icons[toast.type] || Info" class="w-4 h-4 shrink-0 mt-0.5" />
       <span class="flex-1">{{ toast.message }}</span>
       <button class="shrink-0 opacity-70 hover:opacity-100 cursor-pointer" @click="dismiss(toast.id)">
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
+        <X class="w-4 h-4" />
       </button>
     </div>
   </div>

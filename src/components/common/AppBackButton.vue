@@ -1,5 +1,6 @@
 <script setup>
 import { useRouter } from 'vue-router'
+import { ChevronLeft } from '@lucide/vue'
 
 const props = defineProps({
   fallback: { type: [String, Object], required: true },
@@ -18,10 +19,8 @@ function goBack() {
 </script>
 
 <template>
-  <button class="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-primary-700 mb-4 cursor-pointer transition-colors" @click="goBack">
-    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-    </svg>
+  <button class="inline-flex items-center gap-1.5 text-sm text-fg-3 hover:text-primary-700 mb-4 cursor-pointer transition-colors" @click="goBack">
+    <ChevronLeft class="w-4 h-4" />
     {{ label }}
   </button>
 </template>

@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   mockOnSnapshot: vi.fn(),
   mockArrayUnion: vi.fn((value) => ({ type: 'arrayUnion', value })),
   mockArrayRemove: vi.fn((value) => ({ type: 'arrayRemove', value })),
+  mockDeleteField: vi.fn(() => 'DELETE_FIELD'),
 }))
 
 vi.mock('@/firebase', () => ({
@@ -40,6 +41,7 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: mocks.mockServerTimestamp,
   arrayUnion: mocks.mockArrayUnion,
   arrayRemove: mocks.mockArrayRemove,
+  deleteField: mocks.mockDeleteField,
 }))
 
 import { useGroupsStore } from '@/stores/groups'
@@ -276,96 +278,6 @@ describe('groups store', () => {
     expect(groupUpdate.currentCycleRecipientId).toBe('b')
   })
 
-  it('moveMemberRotation swaps rotation order with the neighbor when moving up', async () => {
-    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 0 }) })
-    mocks.mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        { id: 'a', data: () => ({ status: 'approved', rotationOrder: 1 }) },
-        { id: 'b', data: () => ({ status: 'approved', rotationOrder: 2 }) },
-        { id: 'c', data: () => ({ status: 'approved', rotationOrder: 3 }) },
-      ],
-    })
-    const store = useGroupsStore()
-
-    await store.moveMemberRotation('group-1', 'c', 'up')
-
-    expect(mocks.mockUpdateDoc).toHaveBeenCalledTimes(2)
-    const first = mocks.mockUpdateDoc.mock.calls[0]
-    expect(first[0].args[4]).toBe('c')
-    expect(first[1]).toEqual({ rotationOrder: 2 })
-    const second = mocks.mockUpdateDoc.mock.calls[1]
-    expect(second[0].args[4]).toBe('b')
-    expect(second[1]).toEqual({ rotationOrder: 3 })
-  })
-
-  it('moveMemberRotation swaps rotation order when moving down', async () => {
-    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 0 }) })
-    mocks.mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        { id: 'a', data: () => ({ status: 'approved', rotationOrder: 1 }) },
-        { id: 'b', data: () => ({ status: 'approved', rotationOrder: 2 }) },
-        { id: 'c', data: () => ({ status: 'approved', rotationOrder: 3 }) },
-      ],
-    })
-    const store = useGroupsStore()
-
-    await store.moveMemberRotation('group-1', 'a', 'down')
-
-    const first = mocks.mockUpdateDoc.mock.calls[0]
-    expect(first[0].args[4]).toBe('a')
-    expect(first[1]).toEqual({ rotationOrder: 2 })
-    const second = mocks.mockUpdateDoc.mock.calls[1]
-    expect(second[0].args[4]).toBe('b')
-    expect(second[1]).toEqual({ rotationOrder: 1 })
-  })
-
-  it('moveMemberRotation does nothing at the rotation boundaries', async () => {
-    mocks.mockGetDoc.mockResolvedValue({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 0 }) })
-    mocks.mockGetDocs.mockResolvedValue({
-      docs: [
-        { id: 'a', data: () => ({ status: 'approved', rotationOrder: 1 }) },
-        { id: 'b', data: () => ({ status: 'approved', rotationOrder: 2 }) },
-      ],
-    })
-    const store = useGroupsStore()
-
-    await store.moveMemberRotation('group-1', 'a', 'up')
-    await store.moveMemberRotation('group-1', 'b', 'down')
-
-    expect(mocks.mockUpdateDoc).not.toHaveBeenCalled()
-  })
-
-  it('moveMemberRotation rejects mid-rotation reordering', async () => {
-    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 2 }) })
-    mocks.mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        { id: 'a', data: () => ({ status: 'approved', rotationOrder: 1, joinedCycle: 1, hasReceived: true }) },
-        { id: 'b', data: () => ({ status: 'approved', rotationOrder: 2, joinedCycle: 1, hasReceived: false }) },
-      ],
-    })
-    const store = useGroupsStore()
-
-    await expect(store.moveMemberRotation('group-1', 'b', 'up')).rejects.toThrow(
-      'rotation order can only be changed',
-    )
-    expect(mocks.mockUpdateDoc).not.toHaveBeenCalled()
-  })
-
-  it('moveMemberRotation is allowed when the rotation has concluded', async () => {
-    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 3 }) })
-    mocks.mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        { id: 'a', data: () => ({ status: 'approved', rotationOrder: 1, joinedCycle: 1, hasReceived: true }) },
-        { id: 'b', data: () => ({ status: 'approved', rotationOrder: 2, joinedCycle: 1, hasReceived: true }) },
-      ],
-    })
-    const store = useGroupsStore()
-
-    await store.moveMemberRotation('group-1', 'b', 'up')
-
-    expect(mocks.mockUpdateDoc).toHaveBeenCalledTimes(2)
-  })
-
   it('fetchUserGroups surfaces membership status on member groups', async () => {
     mocks.mockGetDocs.mockResolvedValueOnce({ docs: [] })
     mocks.mockGetDoc
@@ -552,5 +464,96 @@ describe('groups store', () => {
     const groupUpdate = mocks.mockUpdateDoc.mock.calls[3][1]
     expect(groupUpdate.rotation).toBe(2)
     expect(groupUpdate.currentCycleRecipientId).toBe('a')
+  })
+
+  it('joinGroupByInvite returns already_pending when a request already exists', async () => {
+    mocks.mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ groupId: 'g1', groupName: 'Test Group', adminId: 'admin-1' }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ userId: 'user-2', status: 'pending', joinedAt: 1 }),
+      })
+    const store = useGroupsStore()
+
+    const result = await store.joinGroupByInvite('code1', 'user-2', 'Amara', 'a@t.com')
+
+    expect(result.status).toBe('already_pending')
+    expect(result.member.id).toBe('user-2')
+  })
+
+  it('startNewCycle uses turnOrder for interleaved recipient selection', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 0, currentCyclePayoutConfirmed: true, turnOrder: ['a', 'b', 'a', 'c'] }) })
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'a', ref: { id: 'a' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, rotationOrder: 1, receivedCount: 0, slots: 2 }) },
+        { id: 'b', ref: { id: 'b' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, rotationOrder: 2, receivedCount: 0, slots: 1 }) },
+        { id: 'c', ref: { id: 'c' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, rotationOrder: 3, receivedCount: 0, slots: 1 }) },
+      ],
+    })
+    const store = useGroupsStore()
+
+    await store.startNewCycle('group-1')
+
+    const groupUpdate = mocks.mockUpdateDoc.mock.calls.find((c) => c[0].type === 'doc' && c[1].currentCycleRecipientId)?.[1]
+    expect(groupUpdate?.currentCycleRecipientId).toBe('a')
+    expect(groupUpdate?.currentCycle).toBe(1)
+  })
+
+  it('startNewCycle picks interleaved second turn correctly', async () => {
+    mocks.mockGetDoc
+      .mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 1, currentCyclePayoutConfirmed: true, turnOrder: ['a', 'b', 'a', 'c'] }) })
+    mocks.mockGetDocs
+      .mockResolvedValueOnce({
+        docs: [
+          { id: 'a', ref: { id: 'a' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, rotationOrder: 1, receivedCount: 1, slots: 2 }) },
+          { id: 'b', ref: { id: 'b' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, rotationOrder: 2, receivedCount: 0, slots: 1 }) },
+          { id: 'c', ref: { id: 'c' }, data: () => ({ status: 'approved', leftAt: null, joinedCycle: 1, rotationOrder: 3, receivedCount: 0, slots: 1 }) },
+        ],
+      })
+    const store = useGroupsStore()
+
+    await store.startNewCycle('group-1')
+
+    const groupUpdate = mocks.mockUpdateDoc.mock.calls.find((c) => c[0].type === 'doc' && c[1].currentCycleRecipientId)?.[1]
+    expect(groupUpdate?.currentCycleRecipientId).toBe('b')
+  })
+
+  it('saveTurnOrder persists valid turn order', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 0 }) })
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'a', data: () => ({ status: 'approved', leftAt: null, slots: 2 }) },
+        { id: 'b', data: () => ({ status: 'approved', leftAt: null, slots: 1 }) },
+      ],
+    })
+    const store = useGroupsStore()
+
+    await store.saveTurnOrder('group-1', ['a', 'b', 'a'])
+
+    const updateCall = mocks.mockUpdateDoc.mock.calls.find((c) => c[0].type === 'doc' && c[1].turnOrder)
+    expect(updateCall[1].turnOrder).toEqual(['a', 'b', 'a'])
+  })
+
+  it('saveTurnOrder rejects invalid turn order', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'user-1', currentCycle: 0 }) })
+    mocks.mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'a', data: () => ({ status: 'approved', leftAt: null, slots: 2 }) },
+        { id: 'b', data: () => ({ status: 'approved', leftAt: null, slots: 1 }) },
+      ],
+    })
+    const store = useGroupsStore()
+
+    await expect(store.saveTurnOrder('group-1', ['a', 'b'])).rejects.toThrow('Invalid payout schedule')
+  })
+
+  it('saveTurnOrder rejects non-admin users', async () => {
+    mocks.mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ adminId: 'someone-else', currentCycle: 0 }) })
+    const store = useGroupsStore()
+
+    await expect(store.saveTurnOrder('group-1', ['a', 'b', 'a'])).rejects.toThrow('Only the group admin')
   })
 })

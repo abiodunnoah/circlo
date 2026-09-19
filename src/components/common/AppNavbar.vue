@@ -4,48 +4,68 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGroupsStore } from '@/stores/groups'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useTheme } from '@/composables/useTheme'
+import {
+  Menu,
+  X,
+  LogOut,
+  LayoutDashboard,
+  Users,
+  Wallet,
+  Bell,
+  User,
+  Inbox,
+  BarChart3,
+  Sun,
+  Moon,
+} from '@lucide/vue'
 import AppModal from '@/components/common/AppModal.vue'
+import AppAvatar from '@/components/common/AppAvatar.vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const groupsStore = useGroupsStore()
 const notificationsStore = useNotificationsStore()
+const { theme, toggleTheme } = useTheme()
 
 const mobileOpen = ref(false)
 const showLogoutModal = ref(false)
 
 const isAdminOfAnyGroup = computed(() => groupsStore.groups.some((g) => g.role === 'admin'))
 const pendingRequestCount = computed(() => groupsStore.pendingRequests.length)
+const unreadCount = computed(() => notificationsStore.unreadCount)
 
-const navItems = computed(() => {
-  const items = [
-    { label: 'Dashboard', name: 'Dashboard', routeNames: ['Dashboard'] },
-    { label: 'Groups', name: 'GroupList', routeNames: ['GroupList', 'GroupDetail', 'CreateGroup'] },
-  ]
+const primaryItems = computed(() => [
+  { label: 'Dashboard', name: 'Dashboard', routeNames: ['Dashboard'], icon: LayoutDashboard },
+  { label: 'Groups', name: 'GroupList', routeNames: ['GroupList', 'GroupDetail', 'CreateGroup'], icon: Users },
+  { label: 'Contributions', name: 'Contributions', routeNames: ['Contributions'], icon: Wallet },
+  {
+    label: 'Alerts',
+    name: 'Notifications',
+    routeNames: ['Notifications'],
+    icon: Bell,
+    badge: unreadCount,
+  },
+  { label: 'Profile', name: 'Profile', routeNames: ['Profile'], icon: User },
+])
+
+const extraItems = computed(() => {
+  const items = []
   if (isAdminOfAnyGroup.value) {
     items.push({
-      label: 'Requests',
+      label: 'Join Requests',
       name: 'Requests',
       routeNames: ['Requests'],
+      icon: Inbox,
       badge: pendingRequestCount,
     })
-  }
-  items.push(
-    { label: 'My Contributions', name: 'Contributions', routeNames: ['Contributions'] },
-    {
-      label: 'Notifications',
-      name: 'Notifications',
-      routeNames: ['Notifications'],
-      badge: computed(() => notificationsStore.unreadCount),
-    },
-    { label: 'Profile', name: 'Profile', routeNames: ['Profile'] },
-  )
-  if (isAdminOfAnyGroup.value) {
-    items.push({ label: 'Reports', name: 'Reports', routeNames: ['Reports'] })
+    items.push({ label: 'Reports', name: 'Reports', routeNames: ['Reports'], icon: BarChart3 })
   }
   return items
 })
+
+const allItems = computed(() => [...primaryItems.value, ...extraItems.value])
 
 function isActive(item) {
   return item.routeNames.includes(route.name)
@@ -107,19 +127,19 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <nav class="bg-white border-b border-slate-200 sticky top-0 z-30">
+  <nav class="bg-card border-b border-line sticky top-0 z-30">
     <div class="max-w-7xl mx-auto px-4 sm:px-6">
       <div class="flex items-center justify-between h-16">
         <button class="flex items-center gap-2 cursor-pointer" @click="navigate(authStore.user ? 'Dashboard' : 'Landing')">
           <span class="text-xl font-bold text-primary-700">Circlo</span>
         </button>
 
-        <div v-if="authStore.user" class="hidden md:flex items-center gap-6">
+        <div v-if="authStore.user" class="hidden md:flex items-center gap-5">
           <button
-            v-for="item in navItems"
+            v-for="item in allItems"
             :key="item.name"
             class="text-sm font-medium cursor-pointer transition-colors"
-            :class="isActive(item) ? 'text-primary-700' : 'text-slate-600 hover:text-slate-900'"
+            :class="isActive(item) ? 'text-primary-700' : 'text-fg-3 hover:text-fg'"
             @click="navigate(item.name)"
           >
             <span class="flex items-center gap-1.5">
@@ -133,32 +153,75 @@ onUnmounted(() => {
             </span>
             <span v-if="isActive(item)" class="block h-0.5 w-6 bg-primary-600 rounded-full mt-0.5 mx-auto" />
           </button>
-          <button class="text-sm font-medium text-red-600 hover:text-red-700 cursor-pointer" @click="openLogoutModal">Logout</button>
+          <button
+            class="p-2 text-fg-4 hover:text-fg rounded-lg cursor-pointer transition-colors"
+            :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+            @click="toggleTheme"
+          >
+            <Sun v-if="theme === 'dark'" class="w-4.5 h-4.5" />
+            <Moon v-else class="w-4.5 h-4.5" />
+          </button>
+          <button
+            class="cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
+            aria-label="Profile"
+            @click="navigate('Profile')"
+          >
+            <AppAvatar
+              :name="authStore.user?.displayName || authStore.user?.email"
+              :id="authStore.user?.uid"
+              size="sm"
+            />
+          </button>
+          <button class="text-sm font-medium text-danger-600 hover:text-danger-700 cursor-pointer" @click="openLogoutModal">Logout</button>
         </div>
 
         <div v-else class="hidden md:flex items-center gap-3">
-          <button class="text-sm font-medium text-slate-600 hover:text-slate-900 cursor-pointer" @click="navigate('Login')">Sign In</button>
+          <button
+            class="p-2 text-fg-4 hover:text-fg rounded-lg cursor-pointer transition-colors"
+            :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+            @click="toggleTheme"
+          >
+            <Sun v-if="theme === 'dark'" class="w-4.5 h-4.5" />
+            <Moon v-else class="w-4.5 h-4.5" />
+          </button>
+          <button class="text-sm font-medium text-fg-3 hover:text-fg cursor-pointer" @click="navigate('Login')">Sign In</button>
           <button class="text-sm font-medium bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 cursor-pointer" @click="navigate('Register')">Get Started</button>
         </div>
 
-        <button class="md:hidden p-2 text-slate-600 cursor-pointer" @click="mobileOpen = !mobileOpen">
-          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path v-if="!mobileOpen" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-            <path v-else stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <div class="flex items-center gap-1 md:hidden">
+          <button
+            class="p-2 text-fg-4 hover:text-fg rounded-lg cursor-pointer transition-colors"
+            :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+            @click="toggleTheme"
+          >
+            <Sun v-if="theme === 'dark'" class="w-5 h-5" />
+            <Moon v-else class="w-5 h-5" />
+          </button>
+          <button
+            v-if="authStore.user"
+            class="p-2 text-fg-3 cursor-pointer"
+            aria-label="Toggle menu"
+            @click="mobileOpen = !mobileOpen"
+          >
+            <Menu v-if="!mobileOpen" class="w-6 h-6" />
+            <X v-else class="w-6 h-6" />
+          </button>
+        </div>
       </div>
 
-      <div v-if="mobileOpen" class="md:hidden pb-4 border-t border-slate-100 pt-3 flex flex-col gap-2">
+      <div v-if="mobileOpen" class="md:hidden pb-4 border-t border-line pt-3 flex flex-col gap-1">
         <template v-if="authStore.user">
           <button
-            v-for="item in navItems"
+            v-for="item in extraItems"
             :key="item.name"
             class="w-full text-left px-3 py-2 text-sm rounded-lg cursor-pointer flex items-center justify-between"
-            :class="isActive(item) ? 'bg-primary-50 text-primary-700 font-medium' : 'text-slate-600 hover:bg-slate-50'"
+            :class="isActive(item) ? 'bg-primary-50 text-primary-700 font-medium' : 'text-fg-3 hover:bg-line-subtle'"
             @click="navigate(item.name)"
           >
-            <span>{{ item.label }}</span>
+            <span class="flex items-center gap-2">
+              <component :is="item.icon" class="w-4 h-4" />
+              {{ item.label }}
+            </span>
             <span
               v-if="item.badge && item.badge.value"
               class="bg-accent-500 text-white text-xs font-semibold rounded-full min-w-[1.25rem] px-1.5 py-0.5 leading-none"
@@ -166,27 +229,58 @@ onUnmounted(() => {
               {{ item.badge.value }}
             </span>
           </button>
-          <button class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg cursor-pointer" @click="openLogoutModal">Logout</button>
+          <button class="w-full text-left px-3 py-2 text-sm text-danger-600 hover:bg-danger-50 rounded-lg cursor-pointer flex items-center gap-2" @click="openLogoutModal">
+            <LogOut class="w-4 h-4" />
+            Logout
+          </button>
         </template>
         <template v-else>
-          <button class="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg cursor-pointer" @click="navigate('Login')">Sign In</button>
+          <button class="w-full text-left px-3 py-2 text-sm text-fg-3 hover:bg-line-subtle rounded-lg cursor-pointer" @click="navigate('Login')">Sign In</button>
           <button class="w-full text-left px-3 py-2 text-sm text-primary-600 font-medium hover:bg-primary-50 rounded-lg cursor-pointer" @click="navigate('Register')">Get Started</button>
         </template>
       </div>
     </div>
   </nav>
 
+  <nav
+    v-if="authStore.user"
+    class="md:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t border-line"
+    style="padding-bottom: env(safe-area-inset-bottom)"
+    aria-label="Primary"
+  >
+    <div class="flex items-stretch">
+      <button
+        v-for="item in primaryItems"
+        :key="item.name"
+        class="relative flex-1 flex flex-col items-center gap-0.5 pt-2.5 pb-2 text-[11px] font-medium cursor-pointer"
+        :class="isActive(item) ? 'text-primary-700' : 'text-fg-4'"
+        :aria-current="isActive(item) ? 'page' : undefined"
+        @click="navigate(item.name)"
+      >
+        <span v-if="isActive(item)" class="absolute top-0 h-0.5 w-8 bg-primary-600 rounded-full" aria-hidden="true" />
+        <span class="relative mt-0.5">
+          <component :is="item.icon" class="w-5 h-5" :stroke-width="isActive(item) ? 2.4 : 2" />
+          <span
+            v-if="item.badge && item.badge.value"
+            class="absolute -top-1 -right-2 bg-accent-500 text-white text-[10px] font-semibold rounded-full min-w-[1rem] h-4 px-1 flex items-center justify-center leading-none"
+          >
+            {{ item.badge.value }}
+          </span>
+        </span>
+        <span>{{ item.label }}</span>
+      </button>
+    </div>
+  </nav>
+
   <AppModal :open="showLogoutModal" title="Sign Out" size="sm" @close="showLogoutModal = false">
     <div class="flex flex-col items-center text-center">
       <div class="w-12 h-12 bg-accent-100 rounded-full flex items-center justify-center mb-3">
-        <svg class="w-6 h-6 text-accent-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-        </svg>
+        <LogOut class="w-6 h-6 text-accent-600" />
       </div>
       <p class="text-sm text-muted mb-5">Are you sure you want to sign out?</p>
       <div class="flex gap-3 w-full">
-        <button class="flex-1 bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showLogoutModal = false">Cancel</button>
-        <button class="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 cursor-pointer" @click="confirmLogout">Sign Out</button>
+        <button class="flex-1 bg-card text-fg-2 px-4 py-2 rounded-lg text-sm font-medium border border-line hover:bg-line-subtle cursor-pointer" @click="showLogoutModal = false">Cancel</button>
+        <button class="flex-1 bg-danger-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-danger-700 cursor-pointer" @click="confirmLogout">Sign Out</button>
       </div>
     </div>
   </AppModal>

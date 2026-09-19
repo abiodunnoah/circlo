@@ -6,10 +6,14 @@ import { useGroupsStore } from '@/stores/groups'
 import { useContributionsStore } from '@/stores/contributions'
 import { createNotification } from '@/stores/notifications'
 import { useToast } from '@/composables/useToast'
-import AppBadge from '@/components/common/AppBadge.vue'
+import { CalendarClock, ChevronUp, ChevronDown, AlertTriangle } from '@lucide/vue'
 import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppModal from '@/components/common/AppModal.vue'
 import AppBackButton from '@/components/common/AppBackButton.vue'
+import AppAvatar from '@/components/common/AppAvatar.vue'
+import AppProgress from '@/components/common/AppProgress.vue'
+import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
+import PayoutTimeline from '@/components/common/PayoutTimeline.vue'
 import { formatNaira } from '@/utils/format'
 
 function formatCycleDate(timestamp) {
@@ -26,7 +30,19 @@ function memberSlots(m) {
 }
 
 function nextPosition(m) {
-  return (m?.rotationOrder || 0) + (m?.receivedCount || 0)
+  const turnOrder = groupsStore.currentGroup?.turnOrder
+  const received = m?.receivedCount || 0
+  if (Array.isArray(turnOrder) && turnOrder.length > 0 && m?.id) {
+    let seen = 0
+    for (let i = 0; i < turnOrder.length; i++) {
+      if (turnOrder[i] === m.id) {
+        if (seen === received) return i
+        seen++
+      }
+    }
+    return Number.MAX_SAFE_INTEGER
+  }
+  return (m?.rotationOrder || 0) + received
 }
 
 const route = useRoute()
@@ -50,6 +66,7 @@ const memberToPayout = ref(null)
 const forcePayout = ref(false)
 const showArchiveModal = ref(false)
 const showDeleteGroupModal = ref(false)
+const scheduleOrder = ref([])
 
 const selectedCycle = ref(0)
 const cycleOptions = ref([])
@@ -73,6 +90,8 @@ const isAdmin = computed(() => groupsStore.currentGroup?.adminId === authStore.u
 
 const currentCycle = computed(() => groupsStore.currentGroup?.currentCycle || 0)
 
+const cycleStarted = computed(() => currentCycle.value > 0)
+
 const eligibleMembers = computed(() =>
   groupsStore.approvedMembers.filter((m) => (m.joinedCycle ?? 1) <= Math.max(currentCycle.value, 1)),
 )
@@ -91,17 +110,9 @@ const cycleConcluded = computed(() => {
 
 const canStartCycle = computed(() => isAdmin.value && cycleConcluded.value)
 
-const canRemoveMembers = computed(() => isAdmin.value && rotationConcluded.value)
+const canRemoveMembers = computed(() => isAdmin.value && (currentCycle.value === 0 || rotationConcluded.value))
 
 const canReorder = computed(() => isAdmin.value && (currentCycle.value === 0 || rotationConcluded.value))
-
-function canMove(member, direction) {
-  const list = groupsStore.approvedMembers
-  const index = list.findIndex((m) => m.id === member.id)
-  if (index === -1) return false
-  if (direction === 'up') return index > 0
-  return index < list.length - 1
-}
 
 const nextMember = computed(() => {
   const unreceived = eligibleMembers.value
@@ -142,11 +153,13 @@ const contributionStats = computed(() => {
 })
 
 const unpaidDuesCount = computed(() => {
+  if (currentCycle.value === 0) return 0
   if (selectedCycle.value !== currentCycle.value) return 0
   return contributionRows.value.filter((r) => !r.isPaid && !r.isVoid).length
 })
 
 const unpaidMemberNames = computed(() => {
+  if (currentCycle.value === 0) return []
   if (selectedCycle.value !== currentCycle.value) return []
   return contributionRows.value.filter((r) => !r.isPaid && !r.isVoid).map((r) => r.member.displayName)
 })
@@ -194,6 +207,13 @@ watch(selectedCycle, (cycle) => {
     unsubscribeContributions = contributionsStore.subscribeToCycleContributions(groupId, cycle)
   }
 })
+
+watch(
+  () => tab.value,
+  (value) => {
+    if (value === 'schedule') initSchedule()
+  },
+)
 
 async function copyInviteLink() {
   if (!inviteLink.value) {
@@ -268,6 +288,70 @@ async function confirmEditSlots() {
   } catch (e) {
     toast.show(e.message, 'error')
   }
+}
+
+function initSchedule() {
+  const turnOrder = groupsStore.currentGroup?.turnOrder
+  const members = groupsStore.approvedMembers
+  if (Array.isArray(turnOrder) && turnOrder.length > 0) {
+    scheduleOrder.value = [...turnOrder]
+  } else {
+    const order = []
+    for (const m of members) {
+      const slots = memberSlots(m)
+      for (let i = 0; i < slots; i++) order.push(m.id)
+    }
+    scheduleOrder.value = order
+  }
+}
+
+function moveTurn(index, direction) {
+  const target = direction === 'up' ? index - 1 : index + 1
+  if (target < 0 || target >= scheduleOrder.value.length) return
+  const arr = [...scheduleOrder.value]
+  const temp = arr[index]
+  arr[index] = arr[target]
+  arr[target] = temp
+  scheduleOrder.value = arr
+}
+
+async function saveSchedule() {
+  try {
+    await groupsStore.saveTurnOrder(groupId, scheduleOrder.value)
+    toast.show('Payout schedule saved', 'success')
+  } catch (e) {
+    toast.show(e.message, 'error')
+  }
+}
+
+async function resetSchedule() {
+  try {
+    await groupsStore.resetTurnOrder(groupId)
+    toast.show('Schedule reset to default', 'success')
+  } catch (e) {
+    toast.show(e.message, 'error')
+  }
+}
+
+function spreadEvenly(memberId) {
+  const total = scheduleOrder.value.length
+  const memberTurns = scheduleOrder.value.filter((id) => id === memberId)
+  const count = memberTurns.length
+  if (count === 0 || count >= total) return
+  const gap = total / count
+  const others = scheduleOrder.value.map((id, i) => ({ id, origIndex: i })).filter((e) => e.id !== memberId)
+  const arr = Array.from({ length: total }, () => null)
+  for (let i = 0; i < count; i++) {
+    const pos = Math.round(i * gap)
+    arr[pos] = memberId
+  }
+  let oi = 0
+  for (let i = 0; i < total; i++) {
+    if (arr[i] === null) {
+      arr[i] = others[oi++].id
+    }
+  }
+  scheduleOrder.value = arr
 }
 
 async function handleStartCycle() {
@@ -373,16 +457,6 @@ async function handleRemindSingle(member) {
   }
 }
 
-async function handleMove(member, direction) {
-  if (!member) return
-  try {
-    await groupsStore.moveMemberRotation(groupId, member.id, direction)
-    toast.show(`${member.displayName} moved ${direction === 'up' ? 'up' : 'down'} in rotation`, 'success')
-  } catch (e) {
-    toast.show(e.message, 'error')
-  }
-}
-
 async function handleVoid(member) {
   if (!member) return
   try {
@@ -398,13 +472,13 @@ async function handleVoid(member) {
   <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
     <div v-if="groupsStore.currentGroupStatus === 'loading'" aria-label="Loading..." aria-busy="true">
       <AppSkeleton class="h-5 w-16 mb-4" />
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+      <div class="bg-card rounded-xl border border-line shadow-sm p-5 mb-6">
         <AppSkeleton class="h-7 w-48 mb-2" />
         <AppSkeleton class="h-4 w-64 mb-1" />
         <AppSkeleton class="h-3 w-40" />
       </div>
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div class="divide-y divide-slate-100">
+      <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
+        <div class="divide-y divide-line-subtle">
           <div v-for="i in 4" :key="i" class="flex items-center gap-4 px-5 py-3.5">
             <AppSkeleton class="h-4 w-6" />
             <AppSkeleton circle class="h-9 w-9 shrink-0" />
@@ -420,10 +494,10 @@ async function handleVoid(member) {
 
     <div v-else-if="groupsStore.currentGroupStatus === 'ready' && groupsStore.currentGroup">
       <AppBackButton :fallback="{ name: 'GroupList' }" />
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 class="text-2xl font-bold text-slate-900">{{ groupsStore.currentGroup.name }}</h1>
+      <div class="bg-card rounded-xl border border-line shadow-sm p-5 mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div class="min-w-0">
+            <h1 class="text-2xl font-bold text-fg">{{ groupsStore.currentGroup.name }}</h1>
             <p class="text-sm text-muted mt-1">
               {{ formatNaira(groupsStore.currentGroup.contributionAmount) }}/{{ groupsStore.currentGroup.frequency }}
               &middot; Cycle {{ groupsStore.currentGroup.currentCycle }}
@@ -435,8 +509,8 @@ async function handleVoid(member) {
             </p>
             <p v-if="isAdmin" class="text-xs text-accent-600 font-medium mt-1">You are the admin</p>
           </div>
-          <div class="flex flex-wrap gap-2">
-            <button v-if="isAdmin" class="bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="copyInviteLink">Copy Invite Link</button>
+          <div class="flex flex-wrap gap-2 shrink-0">
+            <button v-if="isAdmin" class="bg-card text-fg-2 px-4 py-2 rounded-lg text-sm font-medium border border-line hover:bg-line-subtle cursor-pointer" @click="copyInviteLink">Copy Invite Link</button>
             <button
               v-if="isAdmin"
               class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
@@ -446,93 +520,108 @@ async function handleVoid(member) {
             >
               Start New Cycle
             </button>
-            <button v-if="isAdmin && groupsStore.currentGroup.status !== 'completed'" class="bg-white text-red-600 px-4 py-2 rounded-lg text-sm font-medium border border-red-300 hover:bg-red-50 cursor-pointer" @click="currentCycle === 0 && contributionRows.every(r => !r.isPaid) ? showDeleteGroupModal = true : showArchiveModal = true">
+            <button v-if="isAdmin && groupsStore.currentGroup.status !== 'completed'" class="bg-card text-danger-600 px-4 py-2 rounded-lg text-sm font-medium border border-danger-300 hover:bg-danger-50 cursor-pointer" @click="currentCycle === 0 && contributionRows.every(r => !r.isPaid) ? showDeleteGroupModal = true : showArchiveModal = true">
               {{ currentCycle === 0 && contributionRows.every(r => !r.isPaid) ? 'Delete Group' : 'Archive Group' }}
             </button>
           </div>
         </div>
+        <div class="mt-4">
+          <AppProgress
+            :value="groupsStore.currentGroup.currentCycle"
+            :max="groupsStore.currentGroup.totalSlots || groupsStore.currentGroup.totalMembers || 1"
+            :label="`Rotation progress · Cycle ${groupsStore.currentGroup.currentCycle} of ${groupsStore.currentGroup.totalSlots || groupsStore.currentGroup.totalMembers || 1}`"
+          />
+        </div>
       </div>
 
-      <div class="flex gap-1 bg-slate-100 rounded-lg p-1 mb-6 w-fit">
-        <button class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer" :class="tab === 'members' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'" @click="tab = 'members'">Members</button>
-        <button v-if="isAdmin" class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer relative" :class="tab === 'pending' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'" @click="tab = 'pending'">
+      <div class="flex gap-1 bg-line rounded-lg p-1 mb-6 w-fit max-w-full overflow-x-auto">
+        <button class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer" :class="tab === 'members' ? 'bg-card text-fg shadow-sm' : 'text-fg-3 hover:text-fg'" @click="tab = 'members'">Members</button>
+        <button v-if="isAdmin" class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer relative" :class="tab === 'pending' ? 'bg-card text-fg shadow-sm' : 'text-fg-3 hover:text-fg'" @click="tab = 'pending'">
           Pending
           <span v-if="groupsStore.pendingMembers.length" class="ml-1 bg-accent-500 text-white text-xs rounded-full px-1.5">{{ groupsStore.pendingMembers.length }}</span>
         </button>
-        <button class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer" :class="tab === 'contributions' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'" @click="tab = 'contributions'">Contributions</button>
+        <button class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer" :class="tab === 'contributions' ? 'bg-card text-fg shadow-sm' : 'text-fg-3 hover:text-fg'" @click="tab = 'contributions'">Contributions</button>
+        <button v-if="isAdmin && canReorder" class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer" :class="tab === 'schedule' ? 'bg-card text-fg shadow-sm' : 'text-fg-3 hover:text-fg'" @click="tab = 'schedule'">Schedule</button>
       </div>
 
-      <div v-if="tab === 'members'" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div class="divide-y divide-slate-100">
-          <div v-for="m in groupsStore.approvedMembers" :key="m.id" class="flex items-center gap-4 px-5 py-3.5">
-            <span class="text-sm font-medium text-muted w-6">{{ m.rotationOrder }}</span>
+      <div v-if="tab === 'members'" class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
+        <div class="divide-y divide-line-subtle">
+          <div v-for="m in groupsStore.approvedMembers" :key="m.id" class="flex items-start gap-3 px-4 sm:px-5 py-3.5">
+            <span class="text-sm font-medium text-muted w-5 text-right shrink-0 tabular-nums mt-1.5">{{ (m.turnPositions?.[0] ?? (m.rotationOrder || 1) - 1) + 1 }}</span>
+            <AppAvatar :name="m.displayName" :id="m.id" size="md" class="mt-0.5" />
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-slate-900 truncate">
+              <p class="text-sm font-medium text-fg truncate">
                 {{ m.displayName }}
                 <span v-if="m.userId === groupsStore.currentGroup.adminId" class="text-xs text-accent-600 font-medium">(admin)</span>
               </p>
               <p class="text-xs text-muted truncate">{{ m.email }}</p>
               <p class="text-xs text-accent-600 truncate">{{ memberSlots(m) === 1 ? '1 slot' : `${memberSlots(m)} slots` }} &middot; received {{ m.receivedCount || 0 }}/{{ memberSlots(m) }}</p>
             </div>
-            <template v-if="(m.joinedCycle ?? 1) > currentCycle">
-              <AppBadge variant="default">Joins cycle {{ m.joinedCycle }}</AppBadge>
-            </template>
-            <template v-else>
-              <AppBadge v-if="m.hasReceived" variant="received">Received</AppBadge>
-              <AppBadge v-else-if="nextMember?.id === m.id" variant="next">Next</AppBadge>
-              <AppBadge v-else variant="default">Waiting</AppBadge>
-            </template>
-            <div v-if="isAdmin && canReorder" class="flex flex-col gap-0.5">
-              <button :disabled="!canMove(m, 'up')" class="text-[10px] leading-none text-slate-500 hover:text-primary-700 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" title="Move up in rotation" @click="handleMove(m, 'up')">▲</button>
-              <button :disabled="!canMove(m, 'down')" class="text-[10px] leading-none text-slate-500 hover:text-primary-700 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" title="Move down in rotation" @click="handleMove(m, 'down')">▼</button>
+            <div class="flex flex-col items-end gap-1.5 shrink-0">
+              <template v-if="(m.joinedCycle ?? 1) > currentCycle">
+                <AppStatusBadge status="default" :label="`Joins cycle ${m.joinedCycle}`" />
+              </template>
+              <template v-else>
+                <AppStatusBadge v-if="m.hasReceived" status="received" />
+                <AppStatusBadge v-else-if="nextMember?.id === m.id" status="next" />
+                <AppStatusBadge v-else status="default" label="Waiting" />
+              </template>
+              <div class="flex gap-2">
+                <button v-if="isAdmin && canReorder" class="text-xs text-primary-700 hover:text-primary-800 cursor-pointer" @click="openSlotsModal(m)">Slots</button>
+                <button v-if="isAdmin && canRemoveMembers && m.userId !== groupsStore.currentGroup.adminId" class="text-xs text-danger-600 hover:text-danger-700 cursor-pointer" @click="openRemoveModal(m)">Remove</button>
+              </div>
             </div>
-            <button v-if="isAdmin && canReorder" class="text-xs text-primary-700 hover:text-primary-800 cursor-pointer" @click="openSlotsModal(m)">Slots</button>
-            <button v-if="isAdmin && canRemoveMembers && m.userId !== groupsStore.currentGroup.adminId" class="text-xs text-red-600 hover:text-red-700 cursor-pointer" @click="openRemoveModal(m)">Remove</button>
           </div>
           <div v-if="!groupsStore.approvedMembers.length" class="px-5 py-8 text-center text-sm text-muted">No members yet</div>
         </div>
       </div>
 
-      <div v-if="tab === 'pending'" class="bg-white rounded-xl border border-slate-200 shadow-sm">
-        <div class="divide-y divide-slate-100">
+      <div v-if="tab === 'pending'" class="bg-card rounded-xl border border-line shadow-sm">
+        <div class="divide-y divide-line-subtle">
           <div v-for="r in groupsStore.pendingMembers" :key="r.id" class="flex items-center gap-4 px-5 py-3.5">
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-slate-900">{{ r.displayName }}</p>
+              <p class="text-sm font-medium text-fg">{{ r.displayName }}</p>
               <p class="text-xs text-muted">{{ r.email }}</p>
             </div>
             <div class="flex items-center gap-1.5">
               <label class="text-xs text-muted">Slots</label>
-              <select v-model="pendingSlots[r.id]" class="rounded-lg border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500">
+              <select v-model="pendingSlots[r.id]" class="rounded-lg border border-line px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500">
                 <option v-for="n in 10" :key="n" :value="n">{{ n }}</option>
               </select>
             </div>
             <div class="flex gap-2">
               <button class="bg-primary-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-primary-700 cursor-pointer" @click="handleApprove(r)">Approve</button>
-              <button class="bg-white text-red-600 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-300 hover:bg-red-50 cursor-pointer" @click="handleReject(r)">Reject</button>
+              <button class="bg-card text-danger-600 px-3 py-1.5 rounded-lg text-xs font-medium border border-danger-300 hover:bg-danger-50 cursor-pointer" @click="handleReject(r)">Reject</button>
             </div>
           </div>
           <div v-if="!groupsStore.pendingMembers.length" class="px-5 py-8 text-center text-sm text-muted">No pending requests</div>
         </div>
       </div>
 
-      <div v-if="tab === 'contributions'" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-4">
-          <div class="flex items-center gap-2">
-            <p class="text-sm font-medium text-slate-700">Cycle</p>
-            <select v-model="selectedCycle" class="rounded-lg border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-              <option v-for="c in cycleOptions" :key="c" :value="c">Cycle {{ c }}</option>
-            </select>
+      <div v-if="tab === 'contributions'" class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
+        <div class="px-5 py-3 bg-line-subtle border-b border-line">
+          <div class="flex items-center justify-between gap-4 mb-3">
+            <div class="flex items-center gap-2">
+              <p class="text-sm font-medium text-fg-2">Cycle</p>
+              <select v-model="selectedCycle" class="rounded-lg border border-line px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+                <option v-for="c in cycleOptions" :key="c" :value="c">Cycle {{ c }}</option>
+              </select>
+            </div>
+            <p class="text-sm text-muted tabular-nums">{{ contributionStats.paid }} of {{ contributionStats.total }} paid</p>
           </div>
-          <p class="text-sm text-muted">{{ contributionStats.paid }} of {{ contributionStats.total }} paid</p>
+          <AppProgress :value="contributionStats.paid" :max="contributionStats.total || 1" variant="success" size="sm" />
         </div>
 
-        <div v-if="unpaidDuesCount > 0" class="bg-amber-50 border-b border-amber-200 px-5 py-3 text-sm text-amber-800">
+        <div v-if="unpaidDuesCount > 0" class="bg-warning-50 border-b border-warning-200 px-5 py-3 text-sm text-warning-800">
           <div class="flex items-start justify-between gap-3">
-            <div>
-              <p class="font-medium">⚠ {{ unpaidDuesCount }} contributor{{ unpaidDuesCount === 1 ? '' : 's' }} haven't paid for this cycle yet.</p>
-              <p class="text-xs text-amber-700 mt-0.5">{{ unpaidMemberNames.join(', ') }}</p>
+            <div class="flex items-start gap-2">
+              <AlertTriangle class="w-4 h-4 text-warning-600 shrink-0 mt-0.5" />
+              <div>
+                <p class="font-medium">{{ unpaidDuesCount }} contributor{{ unpaidDuesCount === 1 ? '' : 's' }} haven't paid for this cycle yet.</p>
+                <p class="text-xs text-warning-700 mt-0.5">{{ unpaidMemberNames.join(', ') }}</p>
+              </div>
             </div>
-            <button v-if="isAdmin" class="bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-700 cursor-pointer shrink-0" @click="handleRemindAll">Remind All</button>
+            <button v-if="isAdmin && cycleStarted" class="bg-warning-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-warning-700 cursor-pointer shrink-0" @click="handleRemindAll">Remind All</button>
           </div>
         </div>
 
@@ -554,7 +643,7 @@ async function handleVoid(member) {
         <div v-else-if="contributionRows.length" class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
-              <tr class="border-b border-slate-100 text-left">
+              <tr class="border-b border-line-subtle text-left">
                 <th class="px-5 py-3 font-medium text-muted">Member</th>
                 <th class="px-5 py-3 font-medium text-muted">Status</th>
                 <th class="px-5 py-3 font-medium text-muted hidden sm:table-cell">Amount</th>
@@ -562,23 +651,28 @@ async function handleVoid(member) {
                 <th v-if="isAdmin" class="px-5 py-3 font-medium text-muted text-right">Actions</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
-              <tr v-for="row in contributionRows" :key="row.member.id" class="hover:bg-slate-50">
-                <td class="px-5 py-3 font-medium text-slate-900">{{ row.member.displayName }}</td>
+            <tbody class="divide-y divide-line-subtle">
+              <tr v-for="row in contributionRows" :key="row.member.id" class="hover:bg-line-subtle">
                 <td class="px-5 py-3">
-                  <AppBadge v-if="row.isVoid" variant="void">Voided</AppBadge>
-                  <AppBadge v-else-if="row.isOwing" variant="owing">Owing</AppBadge>
-                  <AppBadge v-else-if="row.isPaid" variant="paid">Paid</AppBadge>
-                  <AppBadge v-else variant="pending">Unpaid</AppBadge>
+                  <div class="flex items-center gap-2.5">
+                    <AppAvatar :name="row.member.displayName" :id="row.member.id" size="sm" />
+                    <span class="font-medium text-fg">{{ row.member.displayName }}</span>
+                  </div>
                 </td>
-                <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ row.contribution ? formatNaira(row.contribution.amount) : formatNaira(groupsStore.currentGroup.contributionAmount * memberSlots(row.member)) }}</td>
+                <td class="px-5 py-3">
+                  <AppStatusBadge v-if="row.isVoid" status="void" label="Voided" />
+                  <AppStatusBadge v-else-if="row.isOwing" status="owing" />
+                  <AppStatusBadge v-else-if="row.isPaid" status="paid" />
+                  <AppStatusBadge v-else status="pending" label="Unpaid" />
+                </td>
+                <td class="px-5 py-3 text-muted hidden sm:table-cell tabular-nums">{{ row.contribution ? formatNaira(row.contribution.amount) : formatNaira(groupsStore.currentGroup.contributionAmount * memberSlots(row.member)) }}</td>
                 <td class="px-5 py-3 text-muted hidden md:table-cell">{{ row.contribution?.paidAt ? new Date(row.contribution.paidAt.toMillis ? row.contribution.paidAt.toMillis() : row.contribution.paidAt).toLocaleDateString() : '—' }}</td>
                 <td v-if="isAdmin" class="px-5 py-3 text-right">
                   <button v-if="!row.isPaid && !row.isVoid" class="bg-primary-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-primary-700 cursor-pointer" @click="openMarkPaidModal(row.member)">Mark Paid</button>
-                  <button v-if="!row.isPaid && !row.isVoid && selectedCycle === currentCycle" class="ml-1 text-xs text-amber-600 hover:text-amber-700 cursor-pointer" @click="handleRemindSingle(row.member)">Remind</button>
-                  <button v-else-if="row.isPaid" class="text-xs text-red-600 hover:text-red-700 cursor-pointer" @click="handleVoid(row.member)">Void</button>
+                  <button v-if="!row.isPaid && !row.isVoid && selectedCycle === currentCycle && cycleStarted" class="ml-1 text-xs text-warning-600 hover:text-warning-700 cursor-pointer" @click="handleRemindSingle(row.member)">Remind</button>
+                  <button v-else-if="row.isPaid" class="text-xs text-danger-600 hover:text-danger-700 cursor-pointer" @click="handleVoid(row.member)">Void</button>
                   <button v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && canConfirmPayout" class="ml-2 bg-accent-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent-700 cursor-pointer" @click="openPayoutModal(row.member, false)">Confirm Payout</button>
-                  <button v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && !canConfirmPayout && unpaidDuesCount > 0" class="ml-2 text-xs text-amber-700 hover:text-amber-800 font-medium cursor-pointer" title="Some members haven't paid yet — force confirm anyway" @click="openPayoutModal(row.member, true)">Force Payout</button>
+                  <button v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && !canConfirmPayout && unpaidDuesCount > 0" class="ml-2 text-xs text-warning-700 hover:text-warning-800 font-medium cursor-pointer" title="Some members haven't paid yet — force confirm anyway" @click="openPayoutModal(row.member, true)">Force Payout</button>
                   <button v-if="cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId" class="ml-2 text-xs text-accent-700 hover:text-accent-800 cursor-pointer" @click="handleUndoPayout(row.member)">Undo Payout</button>
                 </td>
               </tr>
@@ -592,24 +686,77 @@ async function handleVoid(member) {
       </div>
     </div>
 
-    <div v-else-if="groupsStore.currentGroupStatus === 'not_found'" class="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center">
+    <div v-if="tab === 'schedule' && groupsStore.currentGroup" class="space-y-6">
+      <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-line">
+          <h3 class="text-sm font-semibold text-fg flex items-center gap-2">
+            <CalendarClock class="w-4 h-4 text-primary-600" />
+            Payout Order
+          </h3>
+          <p class="text-xs text-muted mt-0.5">Visual order of payout turns for the current rotation.</p>
+        </div>
+        <div class="px-5 py-4">
+          <PayoutTimeline
+            :members="groupsStore.approvedMembers"
+            :turn-order="groupsStore.currentGroup?.turnOrder"
+            :current-recipient-id="groupsStore.currentGroup?.currentCycleRecipientId || ''"
+          />
+        </div>
+      </div>
+
+      <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-line">
+          <div>
+            <h3 class="text-sm font-semibold text-fg">Edit Schedule</h3>
+            <p class="text-xs text-muted mt-0.5">Move turns up or down to interleave payouts. Each row is one payout turn.</p>
+          </div>
+          <div class="flex gap-2 shrink-0">
+            <button class="text-xs text-fg-3 hover:text-fg cursor-pointer border border-line rounded-lg px-3 py-1.5" @click="resetSchedule">Reset</button>
+            <button class="bg-primary-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-primary-700 cursor-pointer" @click="saveSchedule">Save</button>
+          </div>
+        </div>
+        <div class="divide-y divide-line-subtle">
+          <div v-for="(memberId, idx) in scheduleOrder" :key="idx" class="flex items-center gap-3 px-5 py-2.5">
+            <span class="text-xs text-muted w-5 text-right tabular-nums">{{ idx + 1 }}.</span>
+            <AppAvatar :name="groupsStore.approvedMembers.find((m) => m.id === memberId)?.displayName" :id="memberId" size="sm" />
+            <div class="flex-1 min-w-0">
+              <span class="text-sm font-medium text-fg">{{ groupsStore.approvedMembers.find((m) => m.id === memberId)?.displayName || memberId }}</span>
+              <span class="text-xs text-muted ml-2">slot {{ scheduleOrder.slice(0, idx + 1).filter((id) => id === memberId).length }}/{{ memberSlots(groupsStore.approvedMembers.find((m) => m.id === memberId)) }}</span>
+            </div>
+            <div class="flex gap-1">
+              <button :disabled="idx === 0" class="p-1 rounded text-fg-4 hover:text-primary-700 hover:bg-line disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" aria-label="Move up" @click="moveTurn(idx, 'up')"><ChevronUp class="w-4 h-4" /></button>
+              <button :disabled="idx === scheduleOrder.length - 1" class="p-1 rounded text-fg-4 hover:text-primary-700 hover:bg-line disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" aria-label="Move down" @click="moveTurn(idx, 'down')"><ChevronDown class="w-4 h-4" /></button>
+            </div>
+          </div>
+          <div v-if="!scheduleOrder.length" class="px-5 py-8 text-center text-sm text-muted">No approved members yet.</div>
+        </div>
+        <div class="px-5 py-3 border-t border-line space-y-1">
+          <p class="text-xs font-medium text-muted mb-1">Quick spread</p>
+          <div class="flex flex-wrap gap-1.5">
+            <button v-for="m in groupsStore.approvedMembers.filter((m) => memberSlots(m) > 1)" :key="m.id" class="text-xs text-primary-700 hover:text-primary-800 border border-primary-200 rounded-lg px-2.5 py-1 cursor-pointer" @click="spreadEvenly(m.id)">Spread {{ m.displayName }} evenly</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-else-if="groupsStore.currentGroupStatus === 'not_found'" class="bg-card rounded-xl border border-line shadow-sm p-10 text-center">
       <p class="text-sm text-muted mb-4">This group doesn't exist or you don't have access to it.</p>
       <button class="bg-primary-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer" @click="router.push({ name: 'GroupList' })">Back to Groups</button>
     </div>
 
-    <div v-else-if="groupsStore.currentGroupStatus === 'error'" class="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center">
+    <div v-else-if="groupsStore.currentGroupStatus === 'error'" class="bg-card rounded-xl border border-line shadow-sm p-10 text-center">
       <p class="text-sm text-muted mb-1">Something went wrong</p>
-      <p class="text-sm text-red-600 mb-4">{{ groupsStore.error }}</p>
+      <p class="text-sm text-danger-600 mb-4">{{ groupsStore.error }}</p>
       <button class="bg-primary-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer" @click="router.push({ name: 'GroupList' })">Back to Groups</button>
     </div>
 
     <AppModal :open="showInviteModal" title="Invite Members" @close="showInviteModal = false">
       <p class="text-sm text-muted mb-3">Share this link with your members. Anyone with the link can request to join.</p>
       <div class="flex gap-2">
-        <input :value="inviteLink" readonly class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm bg-slate-50" />
+        <input :value="inviteLink" readonly class="flex-1 rounded-lg border border-line px-3 py-2 text-sm bg-line-subtle" />
         <button class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer" @click="copyToClipboard">Copy</button>
       </div>
-      <button class="mt-3 w-full bg-green-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-green-700 cursor-pointer flex items-center justify-center gap-2" @click="shareToWhatsApp">
+      <button class="mt-3 w-full bg-success-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-success-700 cursor-pointer flex items-center justify-center gap-2" @click="shareToWhatsApp">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
         </svg>
@@ -622,81 +769,81 @@ async function handleVoid(member) {
         This advances the group to Cycle {{ (groupsStore.currentGroup?.currentCycle || 0) + 1 }}. The next member in rotation receives the pot for this cycle, and all eligible members contribute. When every eligible member has received once, a new rotation begins and "received" status resets.
       </p>
       <div class="flex justify-end gap-2">
-        <button class="bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showCycleModal = false">Cancel</button>
+        <button class="bg-card text-fg-2 px-4 py-2 rounded-lg text-sm font-medium border border-line hover:bg-line-subtle cursor-pointer" @click="showCycleModal = false">Cancel</button>
         <button class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" :disabled="!canStartCycle" @click="handleStartCycle">Start Cycle</button>
       </div>
     </AppModal>
 
     <AppModal :open="showRemoveModal" title="Remove Member" @close="showRemoveModal = false">
       <p class="text-sm text-muted mb-4">
-        Remove <span class="font-medium text-slate-900">{{ memberToRemove?.displayName }}</span> from this group? Their contribution history will be preserved.
+        Remove <span class="font-medium text-fg">{{ memberToRemove?.displayName }}</span> from this group? Their contribution history will be preserved.
       </p>
       <div class="flex justify-end gap-2">
-        <button class="bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showRemoveModal = false">Cancel</button>
-        <button class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 cursor-pointer" @click="handleRemove">Remove</button>
+        <button class="bg-card text-fg-2 px-4 py-2 rounded-lg text-sm font-medium border border-line hover:bg-line-subtle cursor-pointer" @click="showRemoveModal = false">Cancel</button>
+        <button class="bg-danger-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-danger-700 cursor-pointer" @click="handleRemove">Remove</button>
       </div>
     </AppModal>
 
     <AppModal :open="showMarkPaidModal" title="Mark as Paid" size="sm" @close="showMarkPaidModal = false">
       <p class="text-sm text-muted mb-4">
-        Confirm that <span class="font-medium text-slate-900">{{ memberToMarkPaid?.displayName }}</span> paid
-        <span class="font-medium text-slate-900">{{ formatNaira(groupsStore.currentGroup?.contributionAmount * memberSlots(memberToMarkPaid)) }}</span> for Cycle {{ selectedCycle }}.
+        Confirm that <span class="font-medium text-fg">{{ memberToMarkPaid?.displayName }}</span> paid
+        <span class="font-medium text-fg">{{ formatNaira(groupsStore.currentGroup?.contributionAmount * memberSlots(memberToMarkPaid)) }}</span> for Cycle {{ selectedCycle }}.
       </p>
       <p v-if="memberSlots(memberToMarkPaid) > 1" class="text-xs text-accent-600 mb-4">
         This member holds {{ memberSlots(memberToMarkPaid) }} slots and pays {{ memberSlots(memberToMarkPaid) }}× per cycle.
       </p>
       <div class="flex justify-end gap-2">
-        <button class="bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showMarkPaidModal = false">Cancel</button>
+        <button class="bg-card text-fg-2 px-4 py-2 rounded-lg text-sm font-medium border border-line hover:bg-line-subtle cursor-pointer" @click="showMarkPaidModal = false">Cancel</button>
         <button class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer" @click="confirmMarkPaid">Mark Paid</button>
       </div>
     </AppModal>
 
     <AppModal :open="showSlotsModal" title="Edit Slots" size="sm" @close="showSlotsModal = false">
       <p class="text-sm text-muted mb-4">
-        Set the number of slots for <span class="font-medium text-slate-900">{{ editingSlotsMember?.displayName }}</span>. A member with N slots pays N× each cycle and receives the pot N times per rotation.
+        Set the number of slots for <span class="font-medium text-fg">{{ editingSlotsMember?.displayName }}</span>. A member with N slots pays N× each cycle and receives the pot N times per rotation.
       </p>
       <div class="flex items-center gap-2 mb-4">
         <label class="text-sm text-muted">Slots</label>
-        <select v-model="editSlotsValue" class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+        <select v-model="editSlotsValue" class="rounded-lg border border-line px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
           <option v-for="n in 10" :key="n" :value="n">{{ n }}</option>
         </select>
       </div>
       <div class="flex justify-end gap-2">
-        <button class="bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showSlotsModal = false">Cancel</button>
+        <button class="bg-card text-fg-2 px-4 py-2 rounded-lg text-sm font-medium border border-line hover:bg-line-subtle cursor-pointer" @click="showSlotsModal = false">Cancel</button>
         <button class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer" @click="confirmEditSlots">Save</button>
       </div>
     </AppModal>
 
     <AppModal :open="showPayoutModal" title="Confirm Payout" size="sm" @close="showPayoutModal = false">
       <p class="text-sm text-muted mb-4">
-        Confirm that <span class="font-medium text-slate-900">{{ memberToPayout?.displayName }}</span> received the pot for Cycle {{ selectedCycle }}. Once confirmed, the next cycle can be started.
+        Confirm that <span class="font-medium text-fg">{{ memberToPayout?.displayName }}</span> received the pot for Cycle {{ selectedCycle }}. Once confirmed, the next cycle can be started.
       </p>
-      <div v-if="forcePayout" class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-        <p class="text-sm text-amber-800"><span class="font-medium">Note:</span> {{ unpaidDuesCount }} contributor{{ unpaidDuesCount === 1 ? ' has' : 's have' }} not paid yet. You are force-confirming the payout.</p>
+      <div v-if="forcePayout" class="bg-warning-50 border border-warning-200 rounded-lg p-3 mb-4">
+        <p class="text-sm text-warning-800"><span class="font-medium">Note:</span> {{ unpaidDuesCount }} contributor{{ unpaidDuesCount === 1 ? ' has' : 's have' }} not paid yet. You are force-confirming the payout.</p>
       </div>
       <div class="flex justify-end gap-2">
-        <button class="bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showPayoutModal = false">Cancel</button>
-        <button class="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer" :class="forcePayout ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-accent-600 text-white hover:bg-accent-700'" @click="confirmPayout">{{ forcePayout ? 'Force Confirm' : 'Confirm Payout' }}</button>
+        <button class="bg-card text-fg-2 px-4 py-2 rounded-lg text-sm font-medium border border-line hover:bg-line-subtle cursor-pointer" @click="showPayoutModal = false">Cancel</button>
+        <button class="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer" :class="forcePayout ? 'bg-warning-600 text-white hover:bg-warning-700' : 'bg-accent-600 text-white hover:bg-accent-700'" @click="confirmPayout">{{ forcePayout ? 'Force Confirm' : 'Confirm Payout' }}</button>
       </div>
     </AppModal>
 
     <AppModal :open="showArchiveModal" title="Archive Group" @close="showArchiveModal = false">
       <p class="text-sm text-muted mb-4">
-        Archive <span class="font-medium text-slate-900">{{ groupsStore.currentGroup?.name }}</span>? The group will be marked as completed and hidden from your active list. All contribution history is preserved.
+        Archive <span class="font-medium text-fg">{{ groupsStore.currentGroup?.name }}</span>? The group will be marked as completed and hidden from your active list. All contribution history is preserved.
       </p>
       <div class="flex justify-end gap-2">
-        <button class="bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showArchiveModal = false">Cancel</button>
-        <button class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 cursor-pointer" @click="handleArchive">Archive</button>
+        <button class="bg-card text-fg-2 px-4 py-2 rounded-lg text-sm font-medium border border-line hover:bg-line-subtle cursor-pointer" @click="showArchiveModal = false">Cancel</button>
+        <button class="bg-danger-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-danger-700 cursor-pointer" @click="handleArchive">Archive</button>
       </div>
     </AppModal>
 
     <AppModal :open="showDeleteGroupModal" title="Delete Group" @close="showDeleteGroupModal = false">
       <p class="text-sm text-muted mb-4">
-        Permanently delete <span class="font-medium text-slate-900">{{ groupsStore.currentGroup?.name }}</span>? This cannot be undone. The group has no contribution history.
+        Permanently delete <span class="font-medium text-fg">{{ groupsStore.currentGroup?.name }}</span>? This cannot be undone. The group has no contribution history.
       </p>
       <div class="flex justify-end gap-2">
-        <button class="bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 hover:bg-slate-50 cursor-pointer" @click="showDeleteGroupModal = false">Cancel</button>
-        <button class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 cursor-pointer" @click="handleDeleteGroup">Delete Group</button>
+        <button class="bg-card text-fg-2 px-4 py-2 rounded-lg text-sm font-medium border border-line hover:bg-line-subtle cursor-pointer" @click="showDeleteGroupModal = false">Cancel</button>
+        <button class="bg-danger-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-danger-700 cursor-pointer" @click="handleDeleteGroup">Delete Group</button>
       </div>
     </AppModal>
   </div>

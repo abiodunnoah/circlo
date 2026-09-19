@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { db, auth } from '@/firebase'
-import { collection, doc, query, where, getDocs, getDoc, addDoc, updateDoc, setDoc, deleteDoc, onSnapshot, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore'
+import { collection, doc, query, where, getDocs, getDoc, addDoc, updateDoc, setDoc, deleteDoc, onSnapshot, arrayUnion, arrayRemove, serverTimestamp, deleteField } from 'firebase/firestore'
 import { createNotification } from '@/stores/notifications'
 
 function generateInviteCode() {
@@ -33,8 +33,57 @@ function memberReceived(m) {
   return m?.hasReceived ? 1 : 0
 }
 
-function nextPosition(m) {
-  return (m?.rotationOrder || 0) + memberReceived(m)
+function nextPosition(m, turnOrder) {
+  const received = memberReceived(m)
+  const id = m?.id || m?.userId
+  if (Array.isArray(turnOrder) && turnOrder.length > 0 && id) {
+    let seen = 0
+    for (let i = 0; i < turnOrder.length; i++) {
+      if (turnOrder[i] === id) {
+        if (seen === received) return i
+        seen++
+      }
+    }
+    return Number.MAX_SAFE_INTEGER
+  }
+  return (m?.rotationOrder || 0) + received
+}
+
+function buildTurnOrder(members, groupData) {
+  const existing = groupData?.turnOrder
+  if (Array.isArray(existing) && existing.length > 0) {
+    const approved = new Set(
+      members.filter((m) => m.status === 'approved' && !m.leftAt).map((m) => m.id),
+    )
+    const valid = existing.every((id) => approved.has(id))
+    if (valid && isValidTurnOrder(existing, members)) return existing
+  }
+  const approved = members
+    .filter((m) => m.status === 'approved' && !m.leftAt)
+    .sort((a, b) => (a.rotationOrder || 0) - (b.rotationOrder || 0))
+  const order = []
+  for (const m of approved) {
+    const slots = memberSlots(m)
+    for (let i = 0; i < slots; i++) order.push(m.id)
+  }
+  return order
+}
+
+function isValidTurnOrder(order, members) {
+  const totalSlots = members
+    .filter((m) => m.status === 'approved' && !m.leftAt)
+    .reduce((sum, m) => sum + memberSlots(m), 0)
+  if (order.length !== totalSlots) return false
+  const slotCounts = {}
+  for (const m of members) {
+    if (m.status === 'approved' && !m.leftAt) slotCounts[m.id] = memberSlots(m)
+  }
+  const counts = {}
+  for (const id of order) {
+    counts[id] = (counts[id] || 0) + 1
+    if (!slotCounts[id]) return false
+  }
+  return Object.keys(slotCounts).every((id) => counts[id] === slotCounts[id])
 }
 
 async function ensureMembership(uid, groupId) {
@@ -383,12 +432,35 @@ export const useGroupsStore = defineStore('groups', () => {
           return { id: d.id, ...data, slots, receivedCount, hasReceived: receivedCount >= slots }
         })
         members.value = allMembers
+
+        const groupData = currentGroup.value
+        const turnOrder = groupData?.turnOrder
+
+        for (const m of allMembers) {
+          if (Array.isArray(turnOrder) && turnOrder.length > 0) {
+            const positions = []
+            for (let i = 0; i < turnOrder.length; i++) {
+              if (turnOrder[i] === m.id) positions.push(i)
+            }
+            m.turnPositions = positions
+          } else {
+            m.turnPositions = []
+            for (let i = 0; i < (m.slots || 1); i++) {
+              m.turnPositions.push((m.rotationOrder || 0) - 1 + i)
+            }
+          }
+        }
+
         pendingMembers.value = allMembers
           .filter((m) => m.status === 'pending')
           .sort((a, b) => toTime(a.joinedAt) - toTime(b.joinedAt))
         approvedMembers.value = allMembers
           .filter((m) => m.status === 'approved' && !m.leftAt)
-          .sort((a, b) => a.rotationOrder - b.rotationOrder)
+          .sort((a, b) => {
+            const aFirst = a.turnPositions?.[0] ?? (a.rotationOrder || 0) - 1
+            const bFirst = b.turnPositions?.[0] ?? (b.rotationOrder || 0) - 1
+            return aFirst - bFirst
+          })
       },
       (err) => {
         currentGroupStatus.value = 'error'
@@ -438,7 +510,7 @@ export const useGroupsStore = defineStore('groups', () => {
       }
       if (existing.status === 'pending') {
         await ensureMembership(userId, groupId)
-        return { group: { id: groupId, ...invite }, member: { id: userId, ...existing }, status: 'pending' }
+        return { group: { id: groupId, ...invite }, member: { id: userId, ...existing }, status: 'already_pending' }
       }
       if (existing.status === 'rejected') {
         throw new Error('Your previous request to join this group was declined. Please contact the admin.')
@@ -500,7 +572,13 @@ export const useGroupsStore = defineStore('groups', () => {
     const totalMembers = (groupData.totalMembers || 0) + 1
     const totalSlots = (groupData.totalSlots || 0) + requestedSlots
     const pendingCount = Math.max(0, (groupData.pendingCount || 0) - 1)
-    await updateDoc(doc(db, 'groups', groupId), { totalMembers, totalSlots, pendingCount })
+    const groupUpdate = { totalMembers, totalSlots, pendingCount }
+    if (Array.isArray(groupData.turnOrder)) {
+      const newTurnOrder = [...groupData.turnOrder]
+      for (let i = 0; i < requestedSlots; i++) newTurnOrder.push(memberId)
+      groupUpdate.turnOrder = newTurnOrder
+    }
+    await updateDoc(doc(db, 'groups', groupId), groupUpdate)
 
     await createNotification({
       userId: memberId,
@@ -561,7 +639,78 @@ export const useGroupsStore = defineStore('groups', () => {
     })
 
     const totalSlots = Math.max(0, (groupData.totalSlots || 0) + delta)
-    await updateDoc(doc(db, 'groups', groupId), { totalSlots })
+    const groupUpdate = { totalSlots }
+    if (Array.isArray(groupData.turnOrder) && delta !== 0) {
+      const newTurnOrder = [...groupData.turnOrder]
+      if (delta > 0) {
+        for (let i = 0; i < delta; i++) newTurnOrder.push(memberId)
+      } else {
+        let removed = 0
+        for (let i = newTurnOrder.length - 1; i >= 0 && removed < -delta; i--) {
+          if (newTurnOrder[i] === memberId) {
+            newTurnOrder.splice(i, 1)
+            removed++
+          }
+        }
+      }
+      groupUpdate.turnOrder = newTurnOrder
+    }
+    await updateDoc(doc(db, 'groups', groupId), groupUpdate)
+  }
+
+  async function saveTurnOrder(groupId, turnOrder) {
+    const uid = auth.currentUser?.uid
+    if (!uid) throw new Error('You must be signed in')
+
+    const groupDoc = await getDoc(doc(db, 'groups', groupId))
+    if (!groupDoc.exists()) throw new Error('Group not found')
+    const groupData = groupDoc.data()
+    if (groupData.adminId !== uid) throw new Error('Only the group admin can change the payout schedule')
+
+    const currentCycle = groupData.currentCycle || 0
+    if (currentCycle !== 0) {
+      const membersSnapshot = await getDocs(collection(db, 'groups', groupId, 'members'))
+      const eligible = membersSnapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => m.status === 'approved' && !m.leftAt && (m.joinedCycle ?? 1) <= Math.max(currentCycle, 1))
+      const rotationConcluded = eligible.length > 0 && eligible.every((m) => memberReceived(m) >= memberSlots(m))
+      if (!rotationConcluded) {
+        throw new Error('The payout schedule can only be changed before the first cycle or after every member has received the pot.')
+      }
+    }
+
+    const membersSnapshot = await getDocs(collection(db, 'groups', groupId, 'members'))
+    const allMembers = membersSnapshot.docs.map((d) => ({ id: d.id, ...d.data() }))
+
+    if (!Array.isArray(turnOrder) || !isValidTurnOrder(turnOrder, allMembers)) {
+      throw new Error('Invalid payout schedule')
+    }
+
+    await updateDoc(doc(db, 'groups', groupId), { turnOrder })
+  }
+
+  async function resetTurnOrder(groupId) {
+    const uid = auth.currentUser?.uid
+    if (!uid) throw new Error('You must be signed in')
+
+    const groupDoc = await getDoc(doc(db, 'groups', groupId))
+    if (!groupDoc.exists()) throw new Error('Group not found')
+    const groupData = groupDoc.data()
+    if (groupData.adminId !== uid) throw new Error('Only the group admin can reset the payout schedule')
+
+    const currentCycle = groupData.currentCycle || 0
+    if (currentCycle !== 0) {
+      const membersSnapshot = await getDocs(collection(db, 'groups', groupId, 'members'))
+      const eligible = membersSnapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => m.status === 'approved' && !m.leftAt && (m.joinedCycle ?? 1) <= Math.max(currentCycle, 1))
+      const rotationConcluded = eligible.length > 0 && eligible.every((m) => memberReceived(m) >= memberSlots(m))
+      if (!rotationConcluded) {
+        throw new Error('The payout schedule can only be changed before the first cycle or after every member has received the pot.')
+      }
+    }
+
+    await updateDoc(doc(db, 'groups', groupId), { turnOrder: deleteField() })
   }
 
   async function removeMember(groupId, memberId) {
@@ -582,7 +731,11 @@ export const useGroupsStore = defineStore('groups', () => {
 
     const totalMembers = Math.max(0, (groupDoc.data().totalMembers || 1) - 1)
     const totalSlots = Math.max(0, (groupDoc.data().totalSlots || 1) - memberSlots(memberDoc.data()))
-    await updateDoc(doc(db, 'groups', groupId), { totalMembers, totalSlots })
+    const groupUpdate = { totalMembers, totalSlots }
+    if (Array.isArray(groupDoc.data().turnOrder)) {
+      groupUpdate.turnOrder = groupDoc.data().turnOrder.filter((id) => id !== memberId)
+    }
+    await updateDoc(doc(db, 'groups', groupId), groupUpdate)
 
     const membersSnapshot = await getDocs(collection(db, 'groups', groupId, 'members'))
     const remaining = membersSnapshot.docs
@@ -597,47 +750,6 @@ export const useGroupsStore = defineStore('groups', () => {
         })
       }
     }
-  }
-
-  async function moveMemberRotation(groupId, memberId, direction) {
-    const groupDoc = await getDoc(doc(db, 'groups', groupId))
-    if (!groupDoc.exists()) throw new Error('Group not found')
-
-    const groupData = groupDoc.data()
-    const adminId = auth.currentUser?.uid
-    if (groupData.adminId !== adminId) throw new Error('Only the group admin can reorder members')
-
-    const membersSnapshot = await getDocs(collection(db, 'groups', groupId, 'members'))
-    const approved = membersSnapshot.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((m) => m.status === 'approved' && !m.leftAt)
-      .sort((a, b) => a.rotationOrder - b.rotationOrder)
-
-    const currentCycle = groupData.currentCycle || 0
-    if (currentCycle !== 0) {
-      const eligible = approved.filter((m) => (m.joinedCycle ?? 1) <= Math.max(currentCycle, 1))
-      const rotationConcluded = eligible.length > 0 && eligible.every((m) => memberReceived(m) >= memberSlots(m))
-      if (!rotationConcluded) {
-        throw new Error(
-          'The rotation order can only be changed before the first cycle or after every member has received the pot.',
-        )
-      }
-    }
-
-    const index = approved.findIndex((m) => m.id === memberId)
-    if (index === -1) return
-
-    const swapIndex = direction === 'up' ? index - 1 : index + 1
-    if (swapIndex < 0 || swapIndex >= approved.length) return
-
-    const member = approved[index]
-    const neighbor = approved[swapIndex]
-    await updateDoc(doc(db, 'groups', groupId, 'members', member.id), {
-      rotationOrder: neighbor.rotationOrder,
-    })
-    await updateDoc(doc(db, 'groups', groupId, 'members', neighbor.id), {
-      rotationOrder: member.rotationOrder,
-    })
   }
 
   async function startNewCycle(groupId) {
@@ -676,9 +788,10 @@ export const useGroupsStore = defineStore('groups', () => {
       throw new Error('This group has no eligible members. Approve members before starting a cycle.')
     }
 
+    const turnOrder = buildTurnOrder(allMembers, groupData)
     const nextEligible = eligible
       .filter((m) => memberReceived(m) < memberSlots(m))
-      .sort((a, b) => nextPosition(a) - nextPosition(b))
+      .sort((a, b) => nextPosition(a, turnOrder) - nextPosition(b, turnOrder))
 
     const recipient = nextEligible[0] || null
     const newRotation = (groupData.rotation || 1) + (rotationConcluded ? 1 : 0)
@@ -878,7 +991,8 @@ export const useGroupsStore = defineStore('groups', () => {
     rejectMember,
     removeMember,
     setMemberSlots,
-    moveMemberRotation,
+    saveTurnOrder,
+    resetTurnOrder,
     startNewCycle,
     archiveGroup,
     deleteGroup,

@@ -103,6 +103,8 @@ Step 6 → Admin sees pending request on group dashboard → Approves or Rejects
 Step 7 → On approval: member sees the group in their dashboard immediately
 ```
 
+Re-clicking an invite link is idempotent: an already-approved member sees "You're Already a Member", and a still-pending member sees "Request Already Sent" (no duplicate request is created).
+
 ### 5.5 Cycle Management
 - A **cycle** is a single payout round: every eligible member contributes and one designated member receives the pot
 - A **rotation** is the full set of cycles covering every eligible member once
@@ -133,8 +135,9 @@ Step 7 → On approval: member sees the group in their dashboard immediately
 ### 5.7 Rotation Tracking
 - Admin sets rotation order when approving members (sequential 1, 2, 3...)
 - The rotation order is a fixed sequence that repeats each rotation
+- **Payout Schedule (turn-level interleaving):** Admin can define an explicit payout order via a `turnOrder` array on the group doc. When present, multi-slot members' turns can be interleaved (e.g. Ada, Bola, Ada, Chidi) rather than consecutive. When absent, falls back to consecutive block order.
 - System tracks who has received the pot (`hasReceived: true`) across cycles within a rotation
-- Dashboard shows who is next in rotation — the member with the lowest `rotationOrder` whose `hasReceived` is still `false`
+- Dashboard shows who is next in rotation — the member whose next turn comes earliest in the payout schedule
 - When every eligible member has received, a new rotation begins and `hasReceived` resets
 
 ### 5.8 Dashboard
@@ -221,6 +224,7 @@ currentCycle        number — current payout round (a cycle = one payout; a rot
 currentCycleStartDate timestamp  — when the current cycle was started
 currentCycleRecipientId string — member id designated to receive the pot this cycle
 rotation            number — increments each time a full rotation concludes
+turnOrder           string[] — (optional) explicit payout order for turn-level interleaving; length = totalSlots; falls back to rotationOrder+slots blocks when absent
 status              "active" | "completed"
 inviteCode          string
 createdAt           timestamp
@@ -422,7 +426,7 @@ circlo/
 ### Phase 6 — v2 (Chit Fund Mode)
 - [x] Arrears tracker: "Collected but owing" badge (member `cyclesOwed`) + report integration — highest-value risk signal
 - [x] Multiple slots per member (pay 2×, collect 2×)
-- [ ] Slot swapping between members (with admin confirmation)
+- [x] Payout schedule / turn-level interleaving (admin arranges individual payout turns to interleave multi-slot members; replaces swap and transfer)
 - [ ] Organizer fee/commission support
 - ~~Auction/bidding mode~~ — deferred (creates chit-fund risk; revisit as separate mode if demand appears)
 - ~~Surety requirement for early winners~~ — deferred (only meaningful with auction mode)

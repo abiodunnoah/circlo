@@ -2,9 +2,12 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useContributionsStore } from '@/stores/contributions'
+import { Wallet } from '@lucide/vue'
 import AppSkeleton from '@/components/common/AppSkeleton.vue'
-import AppBadge from '@/components/common/AppBadge.vue'
+import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import AppAlert from '@/components/common/AppAlert.vue'
+import AppStat from '@/components/common/AppStat.vue'
 import { formatNaira } from '@/utils/format'
 
 const router = useRouter()
@@ -23,15 +26,15 @@ onMounted(() => {
 
 <template>
   <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-    <h1 class="text-2xl font-bold text-slate-900 mb-6">My Contributions</h1>
+    <h1 class="text-2xl font-bold text-fg mb-6">My Contributions</h1>
 
     <div v-if="contributionsStore.myContributionsLoading" aria-label="Loading..." aria-busy="true">
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+      <div class="bg-card rounded-xl border border-line shadow-sm p-5 mb-6">
         <AppSkeleton class="h-3 w-28 mb-2" />
         <AppSkeleton class="h-7 w-20" />
       </div>
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div v-for="i in 5" :key="i" class="flex items-center gap-4 px-5 py-3 border-b border-slate-100">
+      <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
+        <div v-for="i in 5" :key="i" class="flex items-center gap-4 px-5 py-3 border-b border-line-subtle">
           <AppSkeleton class="h-3.5 w-28" />
           <AppSkeleton class="h-3.5 w-16" />
           <AppSkeleton class="h-3.5 w-20" />
@@ -41,21 +44,29 @@ onMounted(() => {
     </div>
 
     <template v-else>
-      <div v-if="contributionsStore.myContributionsError" class="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-        <p class="text-sm font-medium text-red-800 mb-1">Couldn't load your contributions</p>
-        <p class="text-sm text-red-700 mb-2">{{ contributionsStore.myContributionsError }}</p>
-        <button class="text-sm font-medium text-red-700 underline cursor-pointer" @click="contributionsStore.fetchMyContributions()">Try again</button>
-      </div>
+      <AppAlert
+        v-if="contributionsStore.myContributionsError"
+        variant="danger"
+        title="Couldn't load your contributions"
+        action-label="Try again"
+        class="mb-6"
+        @action="contributionsStore.fetchMyContributions()"
+      >
+        {{ contributionsStore.myContributionsError }}
+      </AppAlert>
 
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
-        <p class="text-sm text-muted mb-1">Total Contributed</p>
-        <p class="text-2xl font-bold text-slate-900">{{ formatNaira(contributionsStore.myTotalContributed) }}</p>
-      </div>
+      <AppStat
+        label="Total Contributed"
+        :value="formatNaira(contributionsStore.myTotalContributed)"
+        :icon="Wallet"
+        variant="success"
+        class="mb-6"
+      />
 
-      <div v-if="contributionsStore.myContributions.length" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div v-if="contributionsStore.myContributions.length" class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
         <table class="w-full text-sm">
           <thead>
-            <tr class="border-b border-slate-100 bg-slate-50 text-left">
+            <tr class="border-b border-line-subtle bg-line-subtle text-left">
               <th class="px-5 py-3 font-medium text-muted">Group</th>
               <th class="px-5 py-3 font-medium text-muted">Cycle</th>
               <th class="px-5 py-3 font-medium text-muted">Amount</th>
@@ -63,22 +74,22 @@ onMounted(() => {
               <th class="px-5 py-3 font-medium text-muted">Status</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-100">
-            <tr v-for="c in contributionsStore.myContributions" :key="c.id" class="hover:bg-slate-50 cursor-pointer" @click="router.push({ name: 'GroupDetail', params: { id: c.groupId } })">
-              <td class="px-5 py-3 font-medium text-slate-900">{{ c.groupName }}</td>
-              <td class="px-5 py-3 text-slate-700">Cycle {{ c.cycle }}</td>
-              <td class="px-5 py-3 text-slate-700">{{ formatNaira(c.amount) }}</td>
+          <tbody class="divide-y divide-line-subtle">
+            <tr v-for="c in contributionsStore.myContributions" :key="c.id" class="hover:bg-line-subtle cursor-pointer" @click="router.push({ name: 'GroupDetail', params: { id: c.groupId } })">
+              <td class="px-5 py-3 font-medium text-fg">{{ c.groupName }}</td>
+              <td class="px-5 py-3 text-fg-2">Cycle {{ c.cycle }}</td>
+              <td class="px-5 py-3 tabular-nums text-fg-2">{{ formatNaira(c.amount) }}</td>
               <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ formatDate(c.paidAt) }}</td>
               <td class="px-5 py-3">
-                <AppBadge v-if="c.status === 'void'" variant="void">Voided</AppBadge>
-                <AppBadge v-else variant="paid">Paid</AppBadge>
+                <AppStatusBadge v-if="c.status === 'void'" status="void" label="Voided" />
+                <AppStatusBadge v-else status="paid" />
               </td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <div v-else class="bg-white rounded-xl border border-slate-200 shadow-sm">
+      <div v-else class="bg-card rounded-xl border border-line shadow-sm">
         <AppEmpty
           title="No contributions yet"
           description="Once your group starts a cycle and the admin marks your payments, they'll show up here."

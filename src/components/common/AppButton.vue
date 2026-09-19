@@ -1,4 +1,6 @@
 <script setup>
+import { Loader2 } from '@lucide/vue'
+
 defineProps({
   variant: { type: String, default: 'primary' },
   size: { type: String, default: 'md' },
@@ -23,21 +25,15 @@ defineEmits(['click'])
       variant === 'primary' &&
         'bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500',
       variant === 'secondary' &&
-        'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-slate-400',
-      variant === 'danger' && 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
-      variant === 'ghost' && 'text-slate-600 hover:bg-slate-100 focus:ring-slate-400',
+        'bg-card text-fg-2 border border-line hover:bg-line-subtle focus:ring-fg-4',
+      variant === 'danger' && 'bg-danger-600 text-white hover:bg-danger-700 focus:ring-danger-500',
+      variant === 'success' && 'bg-success-600 text-white hover:bg-success-700 focus:ring-success-500',
+      variant === 'ghost' && 'text-fg-3 hover:bg-line focus:ring-fg-4',
       variant === 'accent' && 'bg-accent-500 text-white hover:bg-accent-600 focus:ring-accent-400',
     ]"
     @click="$emit('click', $event)"
   >
-    <svg v-if="loading" class="animate-spin -ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24">
-      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-      <path
-        class="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-      />
-    </svg>
+    <Loader2 v-if="loading" class="animate-spin -ml-1 h-4 w-4" />
     <slot />
   </button>
 </template>

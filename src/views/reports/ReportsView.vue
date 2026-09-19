@@ -4,9 +4,13 @@ import { useRouter } from 'vue-router'
 import { useGroupsStore } from '@/stores/groups'
 import { useReportsStore } from '@/stores/reports'
 import { useToast } from '@/composables/useToast'
+import { Download, Wallet, Users, CalendarClock } from '@lucide/vue'
 import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import AppBackButton from '@/components/common/AppBackButton.vue'
+import AppAlert from '@/components/common/AppAlert.vue'
+import AppStat from '@/components/common/AppStat.vue'
+import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
 import { formatNaira } from '@/utils/format'
 import Chart from 'chart.js/auto'
 import { jsPDF } from 'jspdf'
@@ -161,9 +165,9 @@ onUnmounted(() => {
 <template>
   <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
     <AppBackButton :fallback="{ name: 'Dashboard' }" />
-    <h1 class="text-2xl font-bold text-slate-900 mb-6">Reports</h1>
+    <h1 class="text-2xl font-bold text-fg mb-6">Reports</h1>
 
-    <div v-if="adminGroups.length === 0" class="bg-white rounded-xl border border-slate-200 shadow-sm">
+    <div v-if="adminGroups.length === 0" class="bg-card rounded-xl border border-line shadow-sm">
       <AppEmpty
         title="No groups to report on"
         description="Reports are available for groups you administer. Create a group to get started."
@@ -173,17 +177,17 @@ onUnmounted(() => {
     </div>
 
     <template v-else>
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+      <div class="bg-card rounded-xl border border-line shadow-sm p-5 mb-6">
         <div class="grid sm:grid-cols-3 gap-4">
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Group</label>
-            <select v-model="selectedGroupId" class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+            <label class="block text-sm font-medium text-fg-2 mb-1">Group</label>
+            <select v-model="selectedGroupId" class="block w-full rounded-lg border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
               <option v-for="g in adminGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
             </select>
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Cycle</label>
-            <select v-model="selectedCycle" class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+            <label class="block text-sm font-medium text-fg-2 mb-1">Cycle</label>
+            <select v-model="selectedCycle" class="block w-full rounded-lg border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
               <option value="all">All Cycles</option>
               <option v-for="c in reportsStore.rows" :key="c.cycle" :value="String(c.cycle)">Cycle {{ c.cycle }}</option>
             </select>
@@ -194,9 +198,7 @@ onUnmounted(() => {
               :disabled="!reportsStore.rows.length"
               @click="exportPdf"
             >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
+              <Download class="w-4 h-4" />
               Export PDF
             </button>
           </div>
@@ -205,26 +207,26 @@ onUnmounted(() => {
 
       <div v-if="reportsStore.loading" aria-label="Loading..." aria-busy="true">
         <div class="grid sm:grid-cols-3 gap-4 mb-6">
-          <div v-for="i in 3" :key="i" class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <div v-for="i in 3" :key="i" class="bg-card rounded-xl border border-line shadow-sm p-4">
             <AppSkeleton class="h-3 w-28 mb-2" />
             <AppSkeleton class="h-7 w-20" />
           </div>
         </div>
         <div class="grid lg:grid-cols-3 gap-4 mb-6">
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 lg:col-span-2">
+          <div class="bg-card rounded-xl border border-line shadow-sm p-4 lg:col-span-2">
             <AppSkeleton class="h-4 w-32 mb-3" />
             <AppSkeleton class="h-64 w-full rounded-lg" />
           </div>
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <div class="bg-card rounded-xl border border-line shadow-sm p-4">
             <AppSkeleton class="h-4 w-40 mb-3" />
             <AppSkeleton class="h-64 w-full rounded-lg" />
           </div>
         </div>
-        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div class="px-5 py-3 bg-slate-50 border-b border-slate-200">
+        <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
+          <div class="px-5 py-3 bg-line-subtle border-b border-line">
             <AppSkeleton class="h-4 w-32" />
           </div>
-          <div v-for="i in 4" :key="i" class="flex items-center gap-4 px-5 py-3 border-b border-slate-100">
+          <div v-for="i in 4" :key="i" class="flex items-center gap-4 px-5 py-3 border-b border-line-subtle">
             <AppSkeleton class="h-3.5 w-16" />
             <AppSkeleton class="h-3.5 w-20" />
             <AppSkeleton class="h-3.5 w-24" />
@@ -234,48 +236,47 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <template v-else-if="reportsStore.error">
-        <div class="bg-red-50 border border-red-200 rounded-xl p-4">
-          <p class="text-sm text-red-700">{{ reportsStore.error }}</p>
-        </div>
-      </template>
+      <AppAlert v-else-if="reportsStore.error" variant="danger" title="Couldn't load reports">
+        {{ reportsStore.error }}
+      </AppAlert>
 
       <template v-else>
         <div class="grid sm:grid-cols-3 gap-4 mb-6">
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <p class="text-sm text-muted mb-1">Total Contributed</p>
-            <p class="text-2xl font-bold text-slate-900">{{ formatNaira(totalContributed) }}</p>
-          </div>
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <p class="text-sm text-muted mb-1">Members Paid (Cycle {{ currentCycle }})</p>
-            <p class="text-2xl font-bold text-slate-900">{{ currentRow ? currentRow.paidCount : 0 }} / {{ currentRow ? currentRow.totalCount : 0 }}</p>
-          </div>
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <p class="text-sm text-muted mb-1">Cycles Covered</p>
-            <p class="text-2xl font-bold text-slate-900">{{ cycleRange }}</p>
-          </div>
+          <AppStat
+            label="Total Contributed"
+            :value="formatNaira(totalContributed)"
+            :icon="Wallet"
+            variant="success"
+          />
+          <AppStat
+            :label="`Members Paid (Cycle ${currentCycle})`"
+            :value="`${currentRow ? currentRow.paidCount : 0} / ${currentRow ? currentRow.totalCount : 0}`"
+            :icon="Users"
+            variant="info"
+          />
+          <AppStat label="Cycles Covered" :value="cycleRange" :icon="CalendarClock" variant="accent" />
         </div>
 
         <div class="grid lg:grid-cols-3 gap-4 mb-6">
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 lg:col-span-2">
-            <p class="text-sm font-medium text-slate-700 mb-3">Collected per Cycle</p>
+          <div class="bg-card rounded-xl border border-line shadow-sm p-4 lg:col-span-2">
+            <p class="text-sm font-medium text-fg-2 mb-3">Collected per Cycle</p>
             <div class="h-64">
               <canvas ref="barCanvas" />
             </div>
           </div>
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <p class="text-sm font-medium text-slate-700 mb-3">Cycle {{ currentCycle }} Payment Status</p>
+          <div class="bg-card rounded-xl border border-line shadow-sm p-4">
+            <p class="text-sm font-medium text-fg-2 mb-3">Cycle {{ currentCycle }} Payment Status</p>
             <div class="h-64 flex items-center justify-center">
               <canvas ref="donutCanvas" />
             </div>
           </div>
         </div>
 
-        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead>
-                <tr class="border-b border-slate-200 bg-slate-50">
+                <tr class="border-b border-line bg-line-subtle">
                   <th class="text-left px-5 py-3 font-medium text-muted">Cycle</th>
                   <th class="text-left px-5 py-3 font-medium text-muted hidden sm:table-cell">Started</th>
                   <th class="text-left px-5 py-3 font-medium text-muted hidden sm:table-cell">Total Collected</th>
@@ -284,17 +285,18 @@ onUnmounted(() => {
                   <th class="text-left px-5 py-3 font-medium text-muted">Status</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-slate-100">
-                <tr v-for="r in filteredRows" :key="r.cycle" class="hover:bg-slate-50">
-                  <td class="px-5 py-3 font-medium text-slate-900">Cycle {{ r.cycle }}</td>
+              <tbody class="divide-y divide-line-subtle">
+                <tr v-for="r in filteredRows" :key="r.cycle" class="hover:bg-line-subtle">
+                  <td class="px-5 py-3 font-medium text-fg">Cycle {{ r.cycle }}</td>
                   <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ r.startedAt ? new Date(r.startedAt.toMillis ? r.startedAt.toMillis() : r.startedAt).toLocaleDateString() : '—' }}</td>
-                  <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ formatNaira(r.totalCollected) }}</td>
+                  <td class="px-5 py-3 text-muted hidden sm:table-cell tabular-nums">{{ formatNaira(r.totalCollected) }}</td>
                   <td class="px-5 py-3">{{ r.recipientName }}</td>
                   <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ r.paidCount }}/{{ r.totalCount }}</td>
                   <td class="px-5 py-3">
-                    <span class="text-xs rounded-full px-2 py-0.5 font-medium" :class="r.allPaid ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'">
-                      {{ r.allPaid ? 'Complete' : 'Incomplete' }}
-                    </span>
+                    <AppStatusBadge
+                      :status="r.allPaid ? 'received' : 'pending'"
+                      :label="r.allPaid ? 'Complete' : 'Incomplete'"
+                    />
                   </td>
                 </tr>
               </tbody>
