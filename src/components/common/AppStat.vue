@@ -33,6 +33,7 @@ defineEmits(['click'])
     :tabindex="interactive ? 0 : undefined"
     @click="interactive && $emit('click')"
     @keydown.enter="interactive && $emit('click')"
+    @keydown.space.prevent="interactive && $emit('click')"
   >
     <div class="flex items-start justify-between gap-3">
       <p class="text-sm text-muted">{{ label }}</p>

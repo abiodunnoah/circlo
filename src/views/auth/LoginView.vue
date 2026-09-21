@@ -50,7 +50,7 @@ async function handleLogin() {
           <label class="block text-sm font-medium text-fg-2 mb-1">Password</label>
           <div class="relative">
             <input v-model="password" :type="showPassword ? 'text' : 'password'" required autocomplete="current-password" placeholder="Enter your password" class="block w-full rounded-lg border border-line px-3 py-2 pr-10 text-sm placeholder:text-fg-4 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
-            <button type="button" class="absolute right-3 top-1/2 -translate-y-1/2 text-fg-4 hover:text-fg-3 cursor-pointer" @click="showPassword = !showPassword" :aria-label="showPassword ? 'Hide password' : 'Show password'">
+            <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-fg-4 hover:text-fg-3 cursor-pointer rounded-lg" @click="showPassword = !showPassword" :aria-label="showPassword ? 'Hide password' : 'Show password'">
               <Eye v-if="!showPassword" class="w-5 h-5" />
               <EyeOff v-else class="w-5 h-5" />
             </button>

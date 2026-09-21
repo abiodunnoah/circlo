@@ -22,7 +22,11 @@ const icons = { success: CheckCircle2, error: XCircle, info: Info, warning: Aler
     >
       <component :is="icons[toast.type] || Info" class="w-4 h-4 shrink-0 mt-0.5" />
       <span class="flex-1">{{ toast.message }}</span>
-      <button class="shrink-0 opacity-70 hover:opacity-100 cursor-pointer" @click="dismiss(toast.id)">
+      <button
+        class="shrink-0 -my-2 -mr-2 p-2 opacity-70 hover:opacity-100 cursor-pointer"
+        aria-label="Dismiss notification"
+        @click="dismiss(toast.id)"
+      >
         <X class="w-4 h-4" />
       </button>
     </div>

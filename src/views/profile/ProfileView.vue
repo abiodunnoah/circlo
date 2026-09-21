@@ -58,8 +58,12 @@ function roleStatus(g) {
   return 'default'
 }
 
+function isClickable(g) {
+  return g.membershipStatus === 'approved' || g.role === 'admin'
+}
+
 function openGroup(g) {
-  if (g.membershipStatus === 'pending' || g.membershipStatus === 'rejected') return
+  if (!isClickable(g)) return
   router.push({ name: 'GroupDetail', params: { id: g.id } })
 }
 
@@ -127,8 +131,12 @@ onMounted(() => {
           v-for="g in groupsStore.groups"
           :key="g.id"
           class="flex items-center justify-between py-2.5"
-          :class="g.membershipStatus === 'approved' || g.role === 'admin' ? 'cursor-pointer' : ''"
+          :class="isClickable(g) ? 'cursor-pointer' : ''"
+          :role="isClickable(g) ? 'button' : undefined"
+          :tabindex="isClickable(g) ? 0 : undefined"
           @click="openGroup(g)"
+          @keydown.enter="openGroup(g)"
+          @keydown.space.prevent="openGroup(g)"
         >
           <span class="text-sm text-fg truncate pr-3">{{ g.name }}</span>
           <AppStatusBadge :status="roleStatus(g)" :label="roleLabel(g)" class="shrink-0" />

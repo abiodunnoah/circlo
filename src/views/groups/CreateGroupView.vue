@@ -63,11 +63,11 @@ async function handleCreate() {
         <div class="flex gap-2">
           <label class="flex-1 cursor-pointer">
             <input type="radio" v-model="frequency" value="weekly" class="sr-only peer" />
-            <div class="text-center px-4 py-2 rounded-lg border text-sm font-medium peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700 border-line text-fg-2 hover:border-fg-4">Weekly</div>
+            <div class="text-center px-4 py-2 rounded-lg border text-sm font-medium peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700 peer-focus-visible:ring-2 peer-focus-visible:ring-primary-500 border-line text-fg-2 hover:border-fg-4">Weekly</div>
           </label>
           <label class="flex-1 cursor-pointer">
             <input type="radio" v-model="frequency" value="monthly" class="sr-only peer" />
-            <div class="text-center px-4 py-2 rounded-lg border text-sm font-medium peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700 border-line text-fg-2 hover:border-fg-4">Monthly</div>
+            <div class="text-center px-4 py-2 rounded-lg border text-sm font-medium peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700 peer-focus-visible:ring-2 peer-focus-visible:ring-primary-500 border-line text-fg-2 hover:border-fg-4">Monthly</div>
           </label>
         </div>
       </div>

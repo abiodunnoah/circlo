@@ -53,7 +53,7 @@ onBeforeUnmount(() => {
       >
         <div class="flex items-center justify-between px-5 py-4 border-b border-line">
           <h2 class="text-lg font-semibold text-fg">{{ title }}</h2>
-          <button class="text-fg-4 hover:text-fg-3 cursor-pointer" aria-label="Close" @click="$emit('close')">
+          <button class="-mr-1.5 p-2 text-fg-4 hover:text-fg-3 cursor-pointer rounded-lg" aria-label="Close" @click="$emit('close')">
             <X class="w-5 h-5" />
           </button>
         </div>

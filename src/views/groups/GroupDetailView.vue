@@ -724,8 +724,8 @@ async function handleVoid(member) {
               <span class="text-xs text-muted ml-2">slot {{ scheduleOrder.slice(0, idx + 1).filter((id) => id === memberId).length }}/{{ memberSlots(groupsStore.approvedMembers.find((m) => m.id === memberId)) }}</span>
             </div>
             <div class="flex gap-1">
-              <button :disabled="idx === 0" class="p-1 rounded text-fg-4 hover:text-primary-700 hover:bg-line disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" aria-label="Move up" @click="moveTurn(idx, 'up')"><ChevronUp class="w-4 h-4" /></button>
-              <button :disabled="idx === scheduleOrder.length - 1" class="p-1 rounded text-fg-4 hover:text-primary-700 hover:bg-line disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" aria-label="Move down" @click="moveTurn(idx, 'down')"><ChevronDown class="w-4 h-4" /></button>
+              <button :disabled="idx === 0" class="p-2 rounded text-fg-4 hover:text-primary-700 hover:bg-line disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" aria-label="Move up" @click="moveTurn(idx, 'up')"><ChevronUp class="w-4 h-4" /></button>
+              <button :disabled="idx === scheduleOrder.length - 1" class="p-2 rounded text-fg-4 hover:text-primary-700 hover:bg-line disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" aria-label="Move down" @click="moveTurn(idx, 'down')"><ChevronDown class="w-4 h-4" /></button>
             </div>
           </div>
           <div v-if="!scheduleOrder.length" class="px-5 py-8 text-center text-sm text-muted">No approved members yet.</div>

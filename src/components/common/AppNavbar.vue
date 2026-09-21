@@ -154,7 +154,7 @@ onUnmounted(() => {
             <span v-if="isActive(item)" class="block h-0.5 w-6 bg-primary-600 rounded-full mt-0.5 mx-auto" />
           </button>
           <button
-            class="p-2 text-fg-4 hover:text-fg rounded-lg cursor-pointer transition-colors"
+            class="p-2.5 text-fg-4 hover:text-fg rounded-lg cursor-pointer transition-colors"
             :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
             @click="toggleTheme"
           >
@@ -162,7 +162,7 @@ onUnmounted(() => {
             <Moon v-else class="w-4.5 h-4.5" />
           </button>
           <button
-            class="cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
+            class="p-1.5 cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
             aria-label="Profile"
             @click="navigate('Profile')"
           >
@@ -177,7 +177,7 @@ onUnmounted(() => {
 
         <div v-else class="hidden md:flex items-center gap-3">
           <button
-            class="p-2 text-fg-4 hover:text-fg rounded-lg cursor-pointer transition-colors"
+            class="p-2.5 text-fg-4 hover:text-fg rounded-lg cursor-pointer transition-colors"
             :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
             @click="toggleTheme"
           >
@@ -190,7 +190,7 @@ onUnmounted(() => {
 
         <div class="flex items-center gap-1 md:hidden">
           <button
-            class="p-2 text-fg-4 hover:text-fg rounded-lg cursor-pointer transition-colors"
+            class="p-2.5 text-fg-4 hover:text-fg rounded-lg cursor-pointer transition-colors"
             :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
             @click="toggleTheme"
           >
@@ -199,7 +199,7 @@ onUnmounted(() => {
           </button>
           <button
             v-if="authStore.user"
-            class="p-2 text-fg-3 cursor-pointer"
+            class="p-2.5 text-fg-3 cursor-pointer"
             aria-label="Toggle menu"
             @click="mobileOpen = !mobileOpen"
           >

@@ -76,7 +76,15 @@ onMounted(() => {
           </thead>
           <tbody class="divide-y divide-line-subtle">
             <tr v-for="c in contributionsStore.myContributions" :key="c.id" class="hover:bg-line-subtle cursor-pointer" @click="router.push({ name: 'GroupDetail', params: { id: c.groupId } })">
-              <td class="px-5 py-3 font-medium text-fg">{{ c.groupName }}</td>
+              <td class="px-5 py-3 font-medium">
+                <RouterLink
+                  :to="{ name: 'GroupDetail', params: { id: c.groupId } }"
+                  class="text-fg hover:text-primary-700"
+                  @click.stop
+                >
+                  {{ c.groupName }}
+                </RouterLink>
+              </td>
               <td class="px-5 py-3 text-fg-2">Cycle {{ c.cycle }}</td>
               <td class="px-5 py-3 tabular-nums text-fg-2">{{ formatNaira(c.amount) }}</td>
               <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ formatDate(c.paidAt) }}</td>

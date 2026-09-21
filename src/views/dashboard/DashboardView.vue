@@ -253,8 +253,12 @@ onMounted(() => {
         <div
           v-for="g in groups"
           :key="g.id"
+          role="button"
+          tabindex="0"
           class="bg-card rounded-xl border border-line shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer flex flex-col"
           @click="openGroup(g)"
+          @keydown.enter="openGroup(g)"
+          @keydown.space.prevent="openGroup(g)"
         >
           <div class="flex items-start justify-between gap-2 mb-3">
             <h3 class="font-semibold text-fg truncate">{{ g.name }}</h3>

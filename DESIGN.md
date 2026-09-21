@@ -88,10 +88,19 @@ System-preference default with manual toggle (Sun/Moon icon in navbar). Persiste
 
 ## Accessibility
 
-- Icon-only buttons require an `aria-label`.
+- **Focus:** a global `:where(:focus-visible)` outline (in `main.css`) gives every control a
+  visible ring. Components that define their own ring (`AppButton`, `AppInput`) opt out via
+  `focus:outline-none`, so there is never a double indicator.
+- **Icon-only buttons** require an `aria-label`.
+- **Clickable cards/rows:** use a real `<button>`/`<RouterLink>` where content allows; for
+  block-content cards use `role="button"` + `tabindex="0"` + `@keydown.enter` **and**
+  `@keydown.space.prevent` (see the group cards in `DashboardView`/`GroupListView`).
 - Progress bars expose `role="progressbar"` + `aria-valuenow/min/max`.
 - Active navigation uses `aria-current="page"`.
-- Keep mobile tap targets ≥ 44px.
+- **Tap targets:** keep interactive controls ≥ 44px on mobile (icon-only buttons get ≥ 32px
+  via padding; WCAG 2.5.8 minimum is 24px).
+- **Page transitions** use `<Transition name="page">` (fade + 4px rise); neutralized
+  automatically under `prefers-reduced-motion`.
 
 ## Verification
 

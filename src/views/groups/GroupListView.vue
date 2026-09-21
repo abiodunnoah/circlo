@@ -84,8 +84,12 @@ function retryLoadGroups() {
         <div
           v-for="g in memberGroups"
           :key="g.id"
+          role="button"
+          tabindex="0"
           class="bg-card rounded-xl border border-line shadow-sm p-4 hover:shadow-md transition-shadow cursor-pointer"
           @click="openGroup(g)"
+          @keydown.enter="openGroup(g)"
+          @keydown.space.prevent="openGroup(g)"
         >
           <div class="flex items-center gap-3">
             <AppAvatar :name="g.name" :id="g.id" size="lg" />
@@ -126,8 +130,12 @@ function retryLoadGroups() {
         <div
           v-for="g in adminGroups"
           :key="g.id"
+          role="button"
+          tabindex="0"
           class="bg-card rounded-xl border border-line shadow-sm p-4 hover:shadow-md transition-shadow cursor-pointer"
           @click="router.push({ name: 'GroupDetail', params: { id: g.id } })"
+          @keydown.enter="router.push({ name: 'GroupDetail', params: { id: g.id } })"
+          @keydown.space.prevent="router.push({ name: 'GroupDetail', params: { id: g.id } })"
         >
           <div class="flex items-center gap-3">
             <AppAvatar :name="g.name" :id="g.id" size="lg" />
