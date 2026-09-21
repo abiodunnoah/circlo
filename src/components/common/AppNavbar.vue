@@ -20,6 +20,7 @@ import {
   Moon,
 } from '@lucide/vue'
 import AppModal from '@/components/common/AppModal.vue'
+import AppButton from '@/components/common/AppButton.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 
 const router = useRouter()
@@ -146,7 +147,7 @@ onUnmounted(() => {
               {{ item.label }}
               <span
                 v-if="item.badge && item.badge.value"
-                class="bg-accent-500 text-white text-xs font-semibold rounded-full min-w-[1.25rem] px-1.5 py-0.5 leading-none"
+                class="bg-accent-500 text-inverse text-xs font-semibold rounded-full min-w-[1.25rem] px-1.5 py-0.5 leading-none"
               >
                 {{ item.badge.value }}
               </span>
@@ -158,8 +159,8 @@ onUnmounted(() => {
             :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
             @click="toggleTheme"
           >
-            <Sun v-if="theme === 'dark'" class="w-4.5 h-4.5" />
-            <Moon v-else class="w-4.5 h-4.5" />
+            <Sun v-if="theme === 'dark'" class="w-5 h-5" />
+            <Moon v-else class="w-5 h-5" />
           </button>
           <button
             class="p-1.5 cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -181,11 +182,11 @@ onUnmounted(() => {
             :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
             @click="toggleTheme"
           >
-            <Sun v-if="theme === 'dark'" class="w-4.5 h-4.5" />
-            <Moon v-else class="w-4.5 h-4.5" />
+            <Sun v-if="theme === 'dark'" class="w-5 h-5" />
+            <Moon v-else class="w-5 h-5" />
           </button>
           <button class="text-sm font-medium text-fg-3 hover:text-fg cursor-pointer" @click="navigate('Login')">Sign In</button>
-          <button class="text-sm font-medium bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 cursor-pointer" @click="navigate('Register')">Get Started</button>
+          <AppButton variant="primary" @click="navigate('Register')">Get Started</AppButton>
         </div>
 
         <div class="flex items-center gap-1 md:hidden">
@@ -224,7 +225,7 @@ onUnmounted(() => {
             </span>
             <span
               v-if="item.badge && item.badge.value"
-              class="bg-accent-500 text-white text-xs font-semibold rounded-full min-w-[1.25rem] px-1.5 py-0.5 leading-none"
+              class="bg-accent-500 text-inverse text-xs font-semibold rounded-full min-w-[1.25rem] px-1.5 py-0.5 leading-none"
             >
               {{ item.badge.value }}
             </span>
@@ -262,12 +263,12 @@ onUnmounted(() => {
           <component :is="item.icon" class="w-5 h-5" :stroke-width="isActive(item) ? 2.4 : 2" />
           <span
             v-if="item.badge && item.badge.value"
-            class="absolute -top-1 -right-2 bg-accent-500 text-white text-[10px] font-semibold rounded-full min-w-[1rem] h-4 px-1 flex items-center justify-center leading-none"
+            class="absolute -top-1 -right-2 bg-accent-500 text-inverse text-[10px] font-semibold rounded-full min-w-[1rem] h-4 px-1 flex items-center justify-center leading-none"
           >
             {{ item.badge.value }}
           </span>
         </span>
-        <span>{{ item.label }}</span>
+        <span class="w-full truncate text-center">{{ item.label }}</span>
       </button>
     </div>
   </nav>
@@ -279,8 +280,8 @@ onUnmounted(() => {
       </div>
       <p class="text-sm text-muted mb-5">Are you sure you want to sign out?</p>
       <div class="flex gap-3 w-full">
-        <button class="flex-1 bg-card text-fg-2 px-4 py-2 rounded-lg text-sm font-medium border border-line hover:bg-line-subtle cursor-pointer" @click="showLogoutModal = false">Cancel</button>
-        <button class="flex-1 bg-danger-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-danger-700 cursor-pointer" @click="confirmLogout">Sign Out</button>
+        <AppButton variant="secondary" block @click="showLogoutModal = false">Cancel</AppButton>
+        <AppButton variant="danger" block @click="confirmLogout">Sign Out</AppButton>
       </div>
     </div>
   </AppModal>

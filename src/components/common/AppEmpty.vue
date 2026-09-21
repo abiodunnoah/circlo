@@ -19,7 +19,7 @@ defineEmits(['action'])
     <p v-if="description" class="text-sm text-muted mb-4 max-w-xs">{{ description }}</p>
     <button
       v-if="actionLabel"
-      class="text-sm font-medium text-primary-600 hover:text-primary-700 cursor-pointer"
+      class="text-sm font-medium text-primary-600 hover:text-primary-700 py-2 cursor-pointer"
       @click="$emit('action')"
     >
       {{ actionLabel }}

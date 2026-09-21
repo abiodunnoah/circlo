@@ -8,16 +8,16 @@ const icons = { success: CheckCircle2, error: XCircle, info: Info, warning: Aler
 </script>
 
 <template>
-  <div class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+  <div class="fixed top-4 left-4 right-4 z-50 flex flex-col gap-2 sm:left-auto sm:w-full sm:max-w-sm pointer-events-none">
     <div
       v-for="toast in toasts"
       :key="toast.id"
       class="pointer-events-auto flex items-start gap-3 rounded-lg px-4 py-3 shadow-lg text-sm font-medium transition-all animate-slide-in"
       :class="{
-        'bg-card text-fg border border-line': toast.type === 'info',
-        'bg-success-600 text-white': toast.type === 'success',
-        'bg-danger-600 text-white': toast.type === 'error',
-        'bg-accent-500 text-white': toast.type === 'warning',
+        'bg-info-600 text-inverse': toast.type === 'info',
+        'bg-success-600 text-inverse': toast.type === 'success',
+        'bg-danger-600 text-inverse': toast.type === 'error',
+        'bg-accent-500 text-inverse': toast.type === 'warning',
       }"
     >
       <component :is="icons[toast.type] || Info" class="w-4 h-4 shrink-0 mt-0.5" />

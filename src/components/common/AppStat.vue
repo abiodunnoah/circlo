@@ -45,7 +45,7 @@ defineEmits(['click'])
         <component :is="icon" class="w-4 h-4" />
       </span>
     </div>
-    <p class="text-2xl font-bold text-fg tabular-nums mt-1">{{ value }}</p>
+    <p class="text-xl sm:text-2xl font-bold text-fg tabular-nums mt-1 break-words">{{ value }}</p>
     <p v-if="hint" class="text-xs text-muted mt-1">{{ hint }}</p>
   </div>
 </template>

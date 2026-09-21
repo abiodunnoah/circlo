@@ -7,6 +7,9 @@ import { useToast } from '@/composables/useToast'
 import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import AppAlert from '@/components/common/AppAlert.vue'
+import AppButton from '@/components/common/AppButton.vue'
+import AppCard from '@/components/common/AppCard.vue'
+import AppTabs from '@/components/common/AppTabs.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 import AppProgress from '@/components/common/AppProgress.vue'
 import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
@@ -41,18 +44,15 @@ function retryLoadGroups() {
 
 <template>
   <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-6">
       <h1 class="text-2xl font-bold text-fg">Groups</h1>
-      <button class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer" @click="router.push({ name: 'CreateGroup' })">Create Group</button>
+      <AppButton variant="primary" @click="router.push({ name: 'CreateGroup' })">Create Group</AppButton>
     </div>
 
-    <div class="flex gap-1 bg-line rounded-lg p-1 mb-6 w-fit">
-      <button class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer" :class="tab === 'member' ? 'bg-card text-fg shadow-sm' : 'text-fg-3 hover:text-fg'" @click="tab = 'member'">My Groups</button>
-      <button class="px-4 py-1.5 text-sm font-medium rounded-md cursor-pointer" :class="tab === 'admin' ? 'bg-card text-fg shadow-sm' : 'text-fg-3 hover:text-fg'" @click="tab = 'admin'">Admin</button>
-    </div>
+    <AppTabs v-model="tab" :tabs="[{ label: 'My Groups', value: 'member' }, { label: 'Admin', value: 'admin' }]" class="mb-6" />
 
     <div v-if="groupsStore.loading" aria-label="Loading..." aria-busy="true" class="space-y-3">
-      <div v-for="i in 5" :key="i" class="bg-card rounded-xl border border-line shadow-sm p-4">
+      <AppCard v-for="i in 5" :key="i" padding="p-4">
         <div class="flex items-center gap-3">
           <AppSkeleton circle class="w-12 h-12 shrink-0" />
           <div class="flex-1 min-w-0">
@@ -65,7 +65,7 @@ function retryLoadGroups() {
           </div>
         </div>
         <AppSkeleton class="h-2 w-full rounded-full mt-3" />
-      </div>
+      </AppCard>
     </div>
 
     <AppAlert
@@ -81,12 +81,14 @@ function retryLoadGroups() {
 
     <div v-else-if="tab === 'member'" class="space-y-3">
       <template v-if="memberGroups.length">
-        <div
+        <AppCard
           v-for="g in memberGroups"
           :key="g.id"
           role="button"
           tabindex="0"
-          class="bg-card rounded-xl border border-line shadow-sm p-4 hover:shadow-md transition-shadow cursor-pointer"
+          padding="p-4"
+          hover
+          class="cursor-pointer"
           @click="openGroup(g)"
           @keydown.enter="openGroup(g)"
           @keydown.space.prevent="openGroup(g)"
@@ -114,7 +116,7 @@ function retryLoadGroups() {
             size="sm"
             class="mt-3"
           />
-        </div>
+        </AppCard>
       </template>
       <AppEmpty
         v-else
@@ -127,12 +129,14 @@ function retryLoadGroups() {
 
     <div v-else class="space-y-3">
       <template v-if="adminGroups.length">
-        <div
+        <AppCard
           v-for="g in adminGroups"
           :key="g.id"
           role="button"
           tabindex="0"
-          class="bg-card rounded-xl border border-line shadow-sm p-4 hover:shadow-md transition-shadow cursor-pointer"
+          padding="p-4"
+          hover
+          class="cursor-pointer"
           @click="router.push({ name: 'GroupDetail', params: { id: g.id } })"
           @keydown.enter="router.push({ name: 'GroupDetail', params: { id: g.id } })"
           @keydown.space.prevent="router.push({ name: 'GroupDetail', params: { id: g.id } })"
@@ -159,7 +163,7 @@ function retryLoadGroups() {
             size="sm"
             class="mt-3"
           />
-        </div>
+        </AppCard>
       </template>
       <AppEmpty
         v-else

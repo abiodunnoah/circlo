@@ -2,6 +2,8 @@
 import { useRouter } from 'vue-router'
 import { ShieldCheck, Eye, Users, FileText, PiggyBank, CheckCircle2, ArrowRight } from '@lucide/vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
+import AppButton from '@/components/common/AppButton.vue'
+import AppCard from '@/components/common/AppCard.vue'
 import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
 
 const router = useRouter()
@@ -81,18 +83,22 @@ function nav(route) {
           <div
             class="flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-3"
           >
-            <button
-              class="bg-primary-600 text-white px-6 py-3 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer w-full sm:w-auto"
+            <AppButton
+              variant="primary"
+              size="lg"
+              class="w-full sm:w-auto"
               @click="nav('Register')"
             >
               Get Started Free
-            </button>
-            <button
-              class="bg-card text-fg-2 px-6 py-3 rounded-lg text-sm font-medium border border-line hover:bg-line-subtle cursor-pointer w-full sm:w-auto"
+            </AppButton>
+            <AppButton
+              variant="secondary"
+              size="lg"
+              class="w-full sm:w-auto"
               @click="nav('Login')"
             >
               Sign In
-            </button>
+            </AppButton>
           </div>
           <div
             class="flex items-center justify-center lg:justify-start gap-5 mt-6 text-xs text-muted"
@@ -164,11 +170,7 @@ function nav(route) {
     <section class="py-16 max-w-5xl mx-auto px-4">
       <h2 class="text-2xl font-bold text-center text-fg mb-12">Everything You Need</h2>
       <div class="grid sm:grid-cols-2 gap-6">
-        <div
-          v-for="(f, i) in features"
-          :key="i"
-          class="bg-card rounded-xl border border-line p-5 shadow-sm"
-        >
+        <AppCard v-for="(f, i) in features" :key="i">
           <div
             class="w-10 h-10 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center mb-3"
           >
@@ -176,13 +178,13 @@ function nav(route) {
           </div>
           <h3 class="font-semibold text-fg mb-1">{{ f.title }}</h3>
           <p class="text-sm text-muted">{{ f.text }}</p>
-        </div>
+        </AppCard>
       </div>
     </section>
 
     <section class="max-w-5xl mx-auto px-4 pb-20">
       <div
-        class="rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 text-white p-8 sm:p-12 text-center"
+        class="rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 text-inverse p-8 sm:p-12 text-center"
       >
         <h2 class="text-2xl sm:text-3xl font-bold mb-3">Start your savings circle today</h2>
         <p class="text-primary-100 max-w-xl mx-auto mb-6">

@@ -7,7 +7,6 @@ import {
   ShieldCheck,
   Clock,
   ChevronRight,
-  AlertTriangle,
   PiggyBank,
 } from '@lucide/vue'
 import { useAuthStore } from '@/stores/auth'
@@ -19,6 +18,8 @@ import AppEmpty from '@/components/common/AppEmpty.vue'
 import AppStat from '@/components/common/AppStat.vue'
 import AppProgress from '@/components/common/AppProgress.vue'
 import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
+import AppAlert from '@/components/common/AppAlert.vue'
+import AppCard from '@/components/common/AppCard.vue'
 import { formatNaira } from '@/utils/format'
 
 const router = useRouter()
@@ -111,27 +112,21 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
     <h1 class="text-2xl font-bold text-fg mb-6">
       Hi{{ authStore.user?.displayName ? ', ' + authStore.user.displayName.split(' ')[0] : '' }}
     </h1>
 
-    <div
+    <AppAlert
       v-if="needsVerification"
-      class="bg-warning-50 border border-warning-200 rounded-xl p-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+      variant="info"
+      title="Verify your email address"
+      class="mb-6"
     >
-      <div class="flex items-start gap-3">
-        <AlertTriangle class="w-5 h-5 text-warning-600 shrink-0 mt-0.5" />
-        <div>
-          <p class="text-sm font-medium text-warning-800 mb-0.5">Verify your email address</p>
-          <p class="text-sm text-warning-700">
-            Check your inbox for a verification link so you never miss an update.
-          </p>
-        </div>
-      </div>
-      <div class="flex gap-2 shrink-0">
+      <p>Check your inbox for a verification link so you never miss an update.</p>
+      <div class="mt-3 flex gap-2 shrink-0">
         <button
-          class="text-sm font-medium text-warning-800 underline hover:text-warning-900 cursor-pointer disabled:opacity-50"
+          class="text-sm font-medium text-warning-800 underline hover:text-warning-900 py-1 -my-1 cursor-pointer disabled:opacity-50"
           :disabled="resending"
           @click="resendVerification"
         >
@@ -144,19 +139,19 @@ onMounted(() => {
           I've verified
         </button>
       </div>
-    </div>
+    </AppAlert>
 
     <div v-if="groupsStore.loading" aria-label="Loading..." aria-busy="true">
       <AppSkeleton class="h-32 w-full rounded-2xl mb-6" />
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div v-for="i in 4" :key="i" class="bg-card rounded-xl border border-line shadow-sm p-5">
+        <AppCard v-for="i in 4" :key="i">
           <AppSkeleton class="h-3 w-20 mb-2" />
           <AppSkeleton class="h-7 w-16" />
-        </div>
+        </AppCard>
       </div>
       <AppSkeleton class="h-5 w-28 mb-4" />
       <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div v-for="i in 6" :key="i" class="bg-card rounded-xl border border-line shadow-sm p-5">
+        <AppCard v-for="i in 6" :key="i">
           <div class="flex items-start justify-between mb-3">
             <AppSkeleton class="h-4 w-1/2" />
             <AppSkeleton class="h-5 w-12 rounded-full" />
@@ -167,28 +162,25 @@ onMounted(() => {
             <AppSkeleton class="h-3 w-3/5" />
             <AppSkeleton class="h-3 w-2/3" />
           </div>
-        </div>
+        </AppCard>
       </div>
     </div>
 
     <template v-else>
-      <div
+      <AppAlert
         v-if="groupsStore.error"
-        class="bg-danger-50 border border-danger-200 rounded-xl p-4 mb-6"
+        variant="danger"
+        title="Couldn't load your groups"
+        action-label="Try again"
+        class="mb-6"
+        @action="retryLoadGroups"
       >
-        <p class="text-sm font-medium text-danger-800 mb-1">Couldn't load your groups</p>
-        <p class="text-sm text-danger-700 mb-2">{{ groupsStore.error }}</p>
-        <button
-          class="text-sm font-medium text-danger-700 underline cursor-pointer"
-          @click="retryLoadGroups"
-        >
-          Try again
-        </button>
-      </div>
+        {{ groupsStore.error }}
+      </AppAlert>
 
       <section
         v-if="nextPayout"
-        class="relative overflow-hidden rounded-2xl bg-linear-to-br from-primary-600 to-primary-800 text-white p-6 mb-6"
+        class="relative overflow-hidden rounded-2xl bg-linear-to-br from-primary-600 to-primary-800 text-inverse p-6 mb-6"
       >
         <div
           class="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/10"
@@ -205,16 +197,16 @@ onMounted(() => {
           <p class="text-sm text-primary-100 mt-1.5">
             <template v-if="nextPayout.isMe">
               You'll receive the pot in
-              <span class="font-medium text-white">{{ nextPayout.group.name }}</span>
+              <span class="font-medium text-inverse break-words">{{ nextPayout.group.name }}</span>
             </template>
             <template v-else>
-              <span class="font-medium text-white">{{ nextPayout.recipientName }}</span> receives
+              <span class="font-medium text-inverse break-words">{{ nextPayout.recipientName }}</span> receives
               the pot in
               {{ nextPayout.group.name }}
             </template>
           </p>
           <button
-            class="mt-4 inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 transition-colors text-white text-sm font-medium px-3.5 py-2 rounded-lg cursor-pointer"
+            class="mt-4 inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 transition-colors text-inverse text-sm font-medium px-3.5 py-2 rounded-lg cursor-pointer"
             @click="openGroup(nextPayout.group)"
           >
             View group
@@ -250,12 +242,13 @@ onMounted(() => {
       <h2 class="text-lg font-semibold text-fg mb-4">Your Groups</h2>
 
       <div v-if="groups.length" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div
+        <AppCard
           v-for="g in groups"
           :key="g.id"
           role="button"
           tabindex="0"
-          class="bg-card rounded-xl border border-line shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer flex flex-col"
+          hover
+          class="cursor-pointer flex flex-col"
           @click="openGroup(g)"
           @keydown.enter="openGroup(g)"
           @keydown.space.prevent="openGroup(g)"
@@ -312,17 +305,17 @@ onMounted(() => {
             </div>
             <ChevronRight class="w-4 h-4 text-muted" />
           </div>
-        </div>
+        </AppCard>
       </div>
 
-      <div v-else class="bg-card rounded-xl border border-line shadow-sm">
+      <AppCard v-else padding="p-0">
         <AppEmpty
           title="No groups yet"
           description="Create a savings group to get started, or join one with an invite link from an admin."
           action-label="Create your first group"
           @action="router.push({ name: 'CreateGroup' })"
         />
-      </div>
+      </AppCard>
     </template>
   </div>
 </template>

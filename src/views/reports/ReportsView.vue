@@ -11,6 +11,9 @@ import AppBackButton from '@/components/common/AppBackButton.vue'
 import AppAlert from '@/components/common/AppAlert.vue'
 import AppStat from '@/components/common/AppStat.vue'
 import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
+import AppButton from '@/components/common/AppButton.vue'
+import AppCard from '@/components/common/AppCard.vue'
+import TableWrap from '@/components/common/TableWrap.vue'
 import { formatNaira } from '@/utils/format'
 import Chart from 'chart.js/auto'
 import { jsPDF } from 'jspdf'
@@ -167,17 +170,17 @@ onUnmounted(() => {
     <AppBackButton :fallback="{ name: 'Dashboard' }" />
     <h1 class="text-2xl font-bold text-fg mb-6">Reports</h1>
 
-    <div v-if="adminGroups.length === 0" class="bg-card rounded-xl border border-line shadow-sm">
+    <AppCard v-if="adminGroups.length === 0" padding="p-0">
       <AppEmpty
         title="No groups to report on"
         description="Reports are available for groups you administer. Create a group to get started."
         action-label="Create a group"
         @action="router.push({ name: 'CreateGroup' })"
       />
-    </div>
+    </AppCard>
 
     <template v-else>
-      <div class="bg-card rounded-xl border border-line shadow-sm p-5 mb-6">
+      <AppCard class="mb-6">
         <div class="grid sm:grid-cols-3 gap-4">
           <div>
             <label class="block text-sm font-medium text-fg-2 mb-1">Group</label>
@@ -193,36 +196,37 @@ onUnmounted(() => {
             </select>
           </div>
           <div class="flex items-end">
-            <button
-              class="w-full bg-primary-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary-700 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+            <AppButton
+              variant="primary"
+              block
               :disabled="!reportsStore.rows.length"
               @click="exportPdf"
             >
               <Download class="w-4 h-4" />
               Export PDF
-            </button>
+            </AppButton>
           </div>
         </div>
-      </div>
+      </AppCard>
 
       <div v-if="reportsStore.loading" aria-label="Loading..." aria-busy="true">
         <div class="grid sm:grid-cols-3 gap-4 mb-6">
-          <div v-for="i in 3" :key="i" class="bg-card rounded-xl border border-line shadow-sm p-4">
+          <AppCard v-for="i in 3" :key="i" padding="p-4">
             <AppSkeleton class="h-3 w-28 mb-2" />
             <AppSkeleton class="h-7 w-20" />
-          </div>
+          </AppCard>
         </div>
         <div class="grid lg:grid-cols-3 gap-4 mb-6">
-          <div class="bg-card rounded-xl border border-line shadow-sm p-4 lg:col-span-2">
+          <AppCard padding="p-4" class="lg:col-span-2">
             <AppSkeleton class="h-4 w-32 mb-3" />
             <AppSkeleton class="h-64 w-full rounded-lg" />
-          </div>
-          <div class="bg-card rounded-xl border border-line shadow-sm p-4">
+          </AppCard>
+          <AppCard padding="p-4">
             <AppSkeleton class="h-4 w-40 mb-3" />
             <AppSkeleton class="h-64 w-full rounded-lg" />
-          </div>
+          </AppCard>
         </div>
-        <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
+        <AppCard padding="p-0" class="overflow-hidden">
           <div class="px-5 py-3 bg-line-subtle border-b border-line">
             <AppSkeleton class="h-4 w-32" />
           </div>
@@ -233,7 +237,7 @@ onUnmounted(() => {
             <AppSkeleton class="h-3.5 w-20" />
             <AppSkeleton class="h-5 w-16 rounded-full" />
           </div>
-        </div>
+        </AppCard>
       </div>
 
       <AppAlert v-else-if="reportsStore.error" variant="danger" title="Couldn't load reports">
@@ -258,23 +262,22 @@ onUnmounted(() => {
         </div>
 
         <div class="grid lg:grid-cols-3 gap-4 mb-6">
-          <div class="bg-card rounded-xl border border-line shadow-sm p-4 lg:col-span-2">
+          <AppCard padding="p-4" class="lg:col-span-2">
             <p class="text-sm font-medium text-fg-2 mb-3">Collected per Cycle</p>
             <div class="h-64">
               <canvas ref="barCanvas" />
             </div>
-          </div>
-          <div class="bg-card rounded-xl border border-line shadow-sm p-4">
+          </AppCard>
+          <AppCard padding="p-4">
             <p class="text-sm font-medium text-fg-2 mb-3">Cycle {{ currentCycle }} Payment Status</p>
             <div class="h-64 flex items-center justify-center">
               <canvas ref="donutCanvas" />
             </div>
-          </div>
+          </AppCard>
         </div>
 
-        <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+        <AppCard padding="p-0" class="overflow-hidden">
+          <TableWrap>
               <thead>
                 <tr class="border-b border-line bg-line-subtle">
                   <th class="text-left px-5 py-3 font-medium text-muted">Cycle</th>
@@ -300,12 +303,11 @@ onUnmounted(() => {
                   </td>
                 </tr>
               </tbody>
-            </table>
-          </div>
+          </TableWrap>
           <div v-if="!filteredRows.length" class="px-5 py-10 text-center text-sm text-muted">
             No cycles recorded yet. Start the first cycle to begin collecting contributions.
           </div>
-        </div>
+        </AppCard>
       </template>
     </template>
   </div>

@@ -23,6 +23,9 @@ Defined in `src/assets/main.css` under `@theme` (Tailwind v4).
 | `line-subtle` (`#f1ede8` / `#1e293b`) | Subtle borders, hover states |
 | `fg` / `fg-2` / `fg-3` / `fg-4` | Text hierarchy (primary → faint) |
 | `muted` (`#64748b` / `#94a3b8`) | Secondary text |
+| `inverse` (`#ffffff`) | Text on filled/branded surfaces |
+| `overlay` | Modal scrim |
+| `avatar-1-bg`…`avatar-8-fg` | Deterministic avatar identity colors (theme-aware) |
 
 **Rule:** never use raw Tailwind palette colors (`red-500`, `amber-100`, …) for status. Use the
 semantic tokens so meaning stays consistent and themable.
@@ -40,7 +43,11 @@ semantic tokens so meaning stays consistent and themable.
 - Cards: `bg-card rounded-xl border border-line shadow-sm`
 - Navigation: desktop top nav; **mobile fixed bottom tab bar** (5 primary items) with a
   hamburger for secondary items (Join Requests, Reports) and logout
-- Authenticated mobile content gets `pb-20` so it clears the tab bar
+- Authenticated mobile content gets `pb-24` so it clears the tab bar
+
+**Mobile rules:** wrap tables in `TableWrap`; add `truncate` (fixed-width cells) or
+`break-words` (user-generated names/emails) to prevent horizontal overflow; use
+`min-h-[calc(100dvh-…)]` for full-height shells; header action rows use `flex-wrap gap-2`.
 
 ## Components (`src/components/common/`)
 
@@ -48,12 +55,17 @@ semantic tokens so meaning stays consistent and themable.
 |-----------|-------|
 | `AppAlert` | Inline banner — `variant`: `danger`/`warning`/`info`/`success`, optional `title` + `action-label` |
 | `AppAvatar` | Initials + deterministic color; `size`: `sm`/`md`/`lg`/`xl` |
-| `AppButton` | `variant`: `primary`/`secondary`/`danger`/`success`/`ghost`/`accent`; `loading` |
+| `AppButton` | `variant`: `primary`/`secondary`/`danger`/`success`/`warning`/`accent`/`outline`/`outline-danger`/`ghost`; `size`: `xs`/`sm`/`md`/`lg`; `block`, `loading`, `disabled` |
+| `AppCard` | Card surface; `padding` (default `p-5`), `hover`. Extra layout classes fall through |
+| `AppInput` | Label + control + error/hint; `as`: `input`/`select`/`textarea`; `#trailing` slot (e.g. password eye). Unlisted attrs (`autocomplete`, `minlength`…) pass to the control, `class` to the wrapper |
+| `AppTabs` | Segmented control — `v-model`, `tabs` (strings or `{ label, value, badge }`) |
+| `AppConfirm` | Confirm dialog built on `AppModal` + `AppButton`; `variant`, `confirm-label`, `loading` |
+| `TableWrap` | Guarantees `overflow-x-auto` for tables |
 | `AppProgress` | `value`/`max`, `variant`, `size`, `label`, `show-value` |
 | `AppStat` | Metric card with icon chip; `interactive` for clickable |
 | `AppStatusBadge` | Icon + label status chip |
 | `PayoutTimeline` | Visual payout order (used in Group Detail → Schedule) |
-| `AppCard`, `AppInput`, `AppModal`, `AppToast`, `AppEmpty`, `AppSkeleton`, `AppBackButton` | Primitives |
+| `AppModal`, `AppToast`, `AppEmpty`, `AppSkeleton`, `AppBackButton` | Primitives (`AppModal` exposes a `#footer` slot) |
 
 ## Status vocabulary (`AppStatusBadge`)
 

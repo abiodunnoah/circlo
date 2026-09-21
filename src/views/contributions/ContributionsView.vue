@@ -8,6 +8,8 @@ import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import AppAlert from '@/components/common/AppAlert.vue'
 import AppStat from '@/components/common/AppStat.vue'
+import AppCard from '@/components/common/AppCard.vue'
+import TableWrap from '@/components/common/TableWrap.vue'
 import { formatNaira } from '@/utils/format'
 
 const router = useRouter()
@@ -29,18 +31,18 @@ onMounted(() => {
     <h1 class="text-2xl font-bold text-fg mb-6">My Contributions</h1>
 
     <div v-if="contributionsStore.myContributionsLoading" aria-label="Loading..." aria-busy="true">
-      <div class="bg-card rounded-xl border border-line shadow-sm p-5 mb-6">
+      <AppCard class="mb-6">
         <AppSkeleton class="h-3 w-28 mb-2" />
         <AppSkeleton class="h-7 w-20" />
-      </div>
-      <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
+      </AppCard>
+      <AppCard padding="p-0" class="overflow-hidden">
         <div v-for="i in 5" :key="i" class="flex items-center gap-4 px-5 py-3 border-b border-line-subtle">
           <AppSkeleton class="h-3.5 w-28" />
           <AppSkeleton class="h-3.5 w-16" />
           <AppSkeleton class="h-3.5 w-20" />
           <AppSkeleton class="h-5 w-14 rounded-full" />
         </div>
-      </div>
+      </AppCard>
     </div>
 
     <template v-else>
@@ -63,8 +65,8 @@ onMounted(() => {
         class="mb-6"
       />
 
-      <div v-if="contributionsStore.myContributions.length" class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
-        <table class="w-full text-sm">
+      <AppCard v-if="contributionsStore.myContributions.length" padding="p-0" class="overflow-hidden">
+        <TableWrap>
           <thead>
             <tr class="border-b border-line-subtle bg-line-subtle text-left">
               <th class="px-5 py-3 font-medium text-muted">Group</th>
@@ -94,15 +96,15 @@ onMounted(() => {
               </td>
             </tr>
           </tbody>
-        </table>
-      </div>
+        </TableWrap>
+      </AppCard>
 
-      <div v-else class="bg-card rounded-xl border border-line shadow-sm">
+      <AppCard v-else padding="p-0">
         <AppEmpty
           title="No contributions yet"
           description="Once your group starts a cycle and the admin marks your payments, they'll show up here."
         />
-      </div>
+      </AppCard>
     </template>
   </div>
 </template>

@@ -51,7 +51,7 @@ const config = computed(() => variants[props.variant] || variants.info)
     </div>
     <button
       v-if="actionLabel"
-      class="text-sm font-medium underline shrink-0 cursor-pointer"
+      class="text-sm font-medium underline shrink-0 py-1.5 -my-1.5 cursor-pointer"
       :class="config.btn"
       @click="$emit('action')"
     >

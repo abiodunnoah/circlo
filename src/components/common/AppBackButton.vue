@@ -19,7 +19,7 @@ function goBack() {
 </script>
 
 <template>
-  <button class="inline-flex items-center gap-1.5 text-sm text-fg-3 hover:text-primary-700 mb-4 cursor-pointer transition-colors" @click="goBack">
+  <button class="inline-flex items-center gap-1.5 text-sm text-fg-3 hover:text-primary-700 py-1.5 mb-2.5 cursor-pointer transition-colors" @click="goBack">
     <ChevronLeft class="w-4 h-4" />
     {{ label }}
   </button>

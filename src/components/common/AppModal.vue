@@ -37,7 +37,7 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <div v-if="open" class="fixed inset-0 z-40 flex items-center justify-center p-4" @keydown.esc="$emit('close')">
-      <div class="fixed inset-0 bg-black/40 transition-opacity" @click="$emit('close')" />
+      <div class="fixed inset-0 bg-overlay transition-opacity" @click="$emit('close')" />
       <div
         ref="dialogRef"
         role="dialog"
@@ -59,6 +59,12 @@ onBeforeUnmount(() => {
         </div>
         <div class="p-5">
           <slot />
+        </div>
+        <div
+          v-if="$slots.footer"
+          class="flex flex-wrap justify-end gap-2 px-5 py-4 border-t border-line"
+        >
+          <slot name="footer" />
         </div>
       </div>
     </div>

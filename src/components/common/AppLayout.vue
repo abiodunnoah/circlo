@@ -9,7 +9,7 @@ const authStore = useAuthStore()
 <template>
   <div class="min-h-screen flex flex-col">
     <AppNavbar />
-    <main class="flex-1" :class="authStore.user ? 'pb-20 md:pb-0' : ''">
+    <main class="flex-1" :class="authStore.user ? 'pb-24 md:pb-0' : ''">
       <slot />
     </main>
     <AppToast />

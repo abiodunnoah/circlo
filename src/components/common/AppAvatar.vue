@@ -8,14 +8,14 @@ const props = defineProps({
 })
 
 const palette = [
-  'bg-primary-100 text-primary-700',
-  'bg-accent-100 text-accent-700',
-  'bg-info-100 text-info-700',
-  'bg-danger-100 text-danger-700',
-  'bg-success-100 text-success-700',
-  'bg-purple-100 text-purple-700',
-  'bg-pink-100 text-pink-700',
-  'bg-teal-100 text-teal-700',
+  'bg-avatar-1-bg text-avatar-1-fg',
+  'bg-avatar-2-bg text-avatar-2-fg',
+  'bg-avatar-3-bg text-avatar-3-fg',
+  'bg-avatar-4-bg text-avatar-4-fg',
+  'bg-avatar-5-bg text-avatar-5-fg',
+  'bg-avatar-6-bg text-avatar-6-fg',
+  'bg-avatar-7-bg text-avatar-7-fg',
+  'bg-avatar-8-bg text-avatar-8-fg',
 ]
 
 const initials = computed(() => {

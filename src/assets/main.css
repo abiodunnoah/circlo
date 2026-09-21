@@ -69,6 +69,25 @@
   --color-fg-2: #334155;
   --color-fg-3: #475569;
   --color-fg-4: #94a3b8;
+  --color-inverse: #ffffff;
+  --color-overlay: rgb(0 0 0 / 0.4);
+
+  --color-avatar-1-bg: #d1fae5;
+  --color-avatar-1-fg: #047857;
+  --color-avatar-2-bg: #fef3c7;
+  --color-avatar-2-fg: #b45309;
+  --color-avatar-3-bg: #dbeafe;
+  --color-avatar-3-fg: #1d4ed8;
+  --color-avatar-4-bg: #fee2e2;
+  --color-avatar-4-fg: #b91c1c;
+  --color-avatar-5-bg: #dcfce7;
+  --color-avatar-5-fg: #15803d;
+  --color-avatar-6-bg: #ede9fe;
+  --color-avatar-6-fg: #6d28d9;
+  --color-avatar-7-bg: #ffe4e6;
+  --color-avatar-7-fg: #be123c;
+  --color-avatar-8-bg: #cffafe;
+  --color-avatar-8-fg: #0e7490;
 }
 
 html {
@@ -98,6 +117,25 @@ html {
   --color-danger-100: #7f1d1d;
   --color-info-50: #172554;
   --color-info-100: #1e3a8a;
+
+  --color-overlay: rgb(0 0 0 / 0.6);
+
+  --color-avatar-1-bg: #064e3b;
+  --color-avatar-1-fg: #6ee7b7;
+  --color-avatar-2-bg: #78350f;
+  --color-avatar-2-fg: #fcd34d;
+  --color-avatar-3-bg: #1e3a8a;
+  --color-avatar-3-fg: #93c5fd;
+  --color-avatar-4-bg: #7f1d1d;
+  --color-avatar-4-fg: #fca5a5;
+  --color-avatar-5-bg: #14532d;
+  --color-avatar-5-fg: #86efac;
+  --color-avatar-6-bg: #4c1d95;
+  --color-avatar-6-fg: #c4b5fd;
+  --color-avatar-7-bg: #4c0519;
+  --color-avatar-7-fg: #fda4af;
+  --color-avatar-8-bg: #164e63;
+  --color-avatar-8-fg: #67e8f9;
 }
 
 body {

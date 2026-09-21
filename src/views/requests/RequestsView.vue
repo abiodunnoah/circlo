@@ -7,6 +7,8 @@ import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import AppAlert from '@/components/common/AppAlert.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
+import AppButton from '@/components/common/AppButton.vue'
+import AppCard from '@/components/common/AppCard.vue'
 
 const router = useRouter()
 const groupsStore = useGroupsStore()
@@ -65,7 +67,7 @@ onMounted(() => {
     </div>
 
     <div v-if="groupsStore.requestsLoading" aria-label="Loading..." aria-busy="true" class="space-y-4">
-      <div v-for="i in 3" :key="i" class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
+      <AppCard v-for="i in 3" :key="i" padding="p-0" class="overflow-hidden">
         <div class="px-5 py-3 border-b border-line-subtle bg-line-subtle">
           <AppSkeleton class="h-4 w-32" />
         </div>
@@ -82,7 +84,7 @@ onMounted(() => {
             </div>
           </div>
         </div>
-      </div>
+      </AppCard>
     </div>
 
     <AppAlert
@@ -96,10 +98,10 @@ onMounted(() => {
     </AppAlert>
 
     <div v-else-if="groupedRequests.length" class="space-y-4">
-      <div v-for="group in groupedRequests" :key="group.groupId" class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
-        <div class="flex items-center justify-between px-5 py-3 border-b border-line-subtle bg-line-subtle">
+      <AppCard v-for="group in groupedRequests" :key="group.groupId" padding="p-0" class="overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b border-line-subtle bg-line-subtle">
           <h2 class="font-semibold text-fg truncate">{{ group.groupName }}</h2>
-          <button class="text-xs text-primary-700 font-medium hover:text-primary-800 cursor-pointer shrink-0" @click="openGroup(group.groupId)">
+          <button class="text-xs text-primary-700 font-medium hover:text-primary-800 py-1 -my-1 cursor-pointer shrink-0" @click="openGroup(group.groupId)">
             View group
           </button>
         </div>
@@ -112,21 +114,21 @@ onMounted(() => {
               <p class="text-xs text-muted truncate">{{ member.email }}</p>
             </div>
             <div class="flex gap-2 shrink-0">
-              <button class="bg-primary-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-primary-700 cursor-pointer" @click="handleApprove(group.groupId, member)">Approve</button>
-              <button class="bg-card text-danger-600 px-3 py-1.5 rounded-lg text-xs font-medium border border-danger-300 hover:bg-danger-50 cursor-pointer" @click="handleReject(group.groupId, member)">Reject</button>
+              <AppButton variant="primary" size="xs" @click="handleApprove(group.groupId, member)">Approve</AppButton>
+              <AppButton variant="outline-danger" size="xs" @click="handleReject(group.groupId, member)">Reject</AppButton>
             </div>
           </div>
         </div>
-      </div>
+      </AppCard>
     </div>
 
-    <div v-else class="bg-card rounded-xl border border-line shadow-sm">
+    <AppCard v-else padding="p-0">
       <AppEmpty
         title="No pending requests"
         description="When someone uses your invite link to join a group you manage, their request will appear here."
         action-label="Go to your groups"
         @action="router.push({ name: 'GroupList' })"
       />
-    </div>
+    </AppCard>
   </div>
 </template>

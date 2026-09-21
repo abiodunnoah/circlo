@@ -6,6 +6,9 @@ import { useGroupsStore } from '@/stores/groups'
 import { useToast } from '@/composables/useToast'
 import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
+import AppButton from '@/components/common/AppButton.vue'
+import AppCard from '@/components/common/AppCard.vue'
+import AppInput from '@/components/common/AppInput.vue'
 import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
 
 const router = useRouter()
@@ -76,7 +79,7 @@ onMounted(() => {
   <div class="max-w-2xl mx-auto px-4 sm:px-6 py-8">
     <h1 class="text-2xl font-bold text-fg mb-6">Profile</h1>
 
-    <div class="bg-card rounded-xl border border-line shadow-sm p-5 mb-6">
+    <AppCard class="mb-6">
       <div class="flex items-center gap-4 mb-5">
         <AppAvatar :name="displayName || email" :id="authStore.user?.uid" size="xl" />
         <div class="min-w-0">
@@ -89,34 +92,35 @@ onMounted(() => {
         <div>
           <label class="block text-sm font-medium text-fg-2 mb-1">Display Name</label>
           <div class="flex gap-2">
-            <input
+            <AppInput
               v-model="nameInput"
               type="text"
               maxlength="60"
               autocomplete="name"
               placeholder="Your name"
-              class="flex-1 rounded-lg border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              class="flex-1"
               @keyup.enter="saveName"
             />
-            <button
-              class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            <AppButton
+              variant="primary"
               :disabled="!canSave"
+              :loading="saving"
               @click="saveName"
             >
               {{ saving ? 'Saving...' : 'Save' }}
-            </button>
+            </AppButton>
           </div>
           <p class="text-xs text-muted mt-1">This is the name other members see in your groups.</p>
         </div>
 
         <div>
           <label class="block text-sm font-medium text-fg-2 mb-1">Email</label>
-          <input :value="email" type="email" disabled class="block w-full rounded-lg border border-line bg-line-subtle px-3 py-2 text-sm text-muted cursor-not-allowed" />
+          <AppInput :model-value="email" type="email" disabled />
         </div>
       </div>
-    </div>
+    </AppCard>
 
-    <div class="bg-card rounded-xl border border-line shadow-sm p-5">
+    <AppCard>
       <h2 class="font-semibold text-fg mb-3">Your Groups</h2>
 
       <div v-if="groupsStore.loading" aria-label="Loading..." aria-busy="true" class="divide-y divide-line-subtle">
@@ -144,6 +148,6 @@ onMounted(() => {
       </div>
 
       <p v-else class="text-sm text-muted py-2">You're not part of any groups yet.</p>
-    </div>
+    </AppCard>
   </div>
 </template>
