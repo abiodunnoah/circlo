@@ -161,7 +161,7 @@ onMounted(() => {
           @keydown.enter="openGroup(g)"
           @keydown.space.prevent="openGroup(g)"
         >
-          <span class="text-sm text-fg truncate pr-3">{{ g.name }}</span>
+          <span class="text-sm text-fg truncate pr-3 min-w-0">{{ g.name }}</span>
           <AppStatusBadge :status="roleStatus(g)" :label="roleLabel(g)" class="shrink-0" />
         </div>
       </div>

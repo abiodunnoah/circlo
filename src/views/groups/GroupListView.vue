@@ -122,7 +122,7 @@ function retryLoadGroups() {
         @keydown.space.prevent="openGroup(g)"
       >
         <div class="flex items-start justify-between gap-2 mb-2">
-          <h3 class="font-semibold text-fg truncate">{{ g.name }}</h3>
+          <h3 class="font-semibold text-fg truncate min-w-0 flex-1">{{ g.name }}</h3>
           <div class="flex flex-wrap justify-end gap-1.5 shrink-0">
             <AppStatusBadge v-if="g.membershipStatus === 'pending'" status="pending" label="Pending" />
             <AppStatusBadge v-else-if="g.membershipStatus === 'rejected'" status="rejected" label="Declined" />

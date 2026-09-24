@@ -193,7 +193,7 @@ onMounted(() => {
       <p>Check your inbox for a verification link so you never miss an update.</p>
       <div class="mt-3 flex gap-2">
         <button
-          class="text-sm font-medium text-info-800 underline hover:text-info-900 py-1 -my-1 cursor-pointer disabled:opacity-50"
+          class="text-sm font-medium text-info-800 underline hover:text-info-900 py-1.5 -my-1.5 cursor-pointer disabled:opacity-50"
           :disabled="resending"
           @click="resendVerification"
         >
@@ -262,7 +262,7 @@ onMounted(() => {
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-fg">Your groups</h2>
         <button
-          class="text-sm font-medium text-primary-600 hover:text-primary-700 py-1 -my-1 cursor-pointer"
+          class="text-sm font-medium text-primary-600 hover:text-primary-700 py-1.5 -my-1.5 cursor-pointer"
           @click="router.push({ name: 'GroupList' })"
         >
           View all
@@ -282,7 +282,7 @@ onMounted(() => {
           @keydown.space.prevent="openGroup(g)"
         >
           <div class="flex items-start justify-between gap-2 mb-3">
-            <h3 class="font-semibold text-fg truncate">{{ g.name }}</h3>
+            <h3 class="font-semibold text-fg truncate min-w-0 flex-1">{{ g.name }}</h3>
             <div class="flex flex-wrap justify-end gap-1.5 shrink-0">
               <AppStatusBadge
                 v-if="g.membershipStatus === 'pending'"

@@ -742,11 +742,11 @@ async function handleVoid(member) {
                 <td v-if="isAdmin" class="px-5 py-3">
                   <div class="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
                     <AppButton v-if="!row.isPaid && !row.isVoid" variant="primary" size="xs" @click="openMarkPaidModal(row.member)">Mark Paid</AppButton>
-                    <button v-if="!row.isPaid && !row.isVoid && selectedCycle === currentCycle && cycleStarted" class="text-xs text-warning-600 hover:text-warning-700 cursor-pointer" @click="handleRemindSingle(row.member)">Remind</button>
-                    <button v-else-if="row.isPaid" class="text-xs text-danger-600 hover:text-danger-700 cursor-pointer" @click="handleVoid(row.member)">Void</button>
+                    <button v-if="!row.isPaid && !row.isVoid && selectedCycle === currentCycle && cycleStarted" class="text-xs text-warning-600 hover:text-warning-700 py-1.5 -my-1.5 cursor-pointer" @click="handleRemindSingle(row.member)">Remind</button>
+                    <button v-else-if="row.isPaid" class="text-xs text-danger-600 hover:text-danger-700 py-1.5 -my-1.5 cursor-pointer" @click="handleVoid(row.member)">Void</button>
                     <AppButton v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && canConfirmPayout" variant="accent" size="xs" @click="openPayoutModal(row.member, false)">Confirm Payout</AppButton>
-                    <button v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && !canConfirmPayout && unpaidDuesCount > 0" class="text-xs text-warning-700 hover:text-warning-800 font-medium cursor-pointer" title="Some members haven't paid yet — force confirm anyway" @click="openPayoutModal(row.member, true)">Force Payout</button>
-                    <button v-if="cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId" class="text-xs text-accent-700 hover:text-accent-800 cursor-pointer" @click="handleUndoPayout(row.member)">Undo Payout</button>
+                    <button v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && !canConfirmPayout && unpaidDuesCount > 0" class="text-xs text-warning-700 hover:text-warning-800 font-medium py-1.5 -my-1.5 cursor-pointer" title="Some members haven't paid yet — force confirm anyway" @click="openPayoutModal(row.member, true)">Force Payout</button>
+                    <button v-if="cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId" class="text-xs text-primary-700 hover:text-primary-800 py-1.5 -my-1.5 cursor-pointer" @click="handleUndoPayout(row.member)">Undo Payout</button>
                   </div>
                 </td>
               </tr>
@@ -815,8 +815,8 @@ async function handleVoid(member) {
                   <AppStatusBadge v-else status="default" label="Waiting" />
                 </template>
                 <div class="flex gap-2">
-                  <button v-if="isAdmin && canReorder" class="text-xs text-primary-700 hover:text-primary-800 py-1 -my-1 cursor-pointer" @click="openSlotsModal(m)">Slots</button>
-                  <button v-if="isAdmin && canRemoveMembers && m.userId !== groupsStore.currentGroup.adminId" class="text-xs text-danger-600 hover:text-danger-700 py-1 -my-1 cursor-pointer" @click="openRemoveModal(m)">Remove</button>
+                <button v-if="isAdmin && canReorder" class="text-xs text-primary-700 hover:text-primary-800 py-1.5 -my-1.5 cursor-pointer" @click="openSlotsModal(m)">Slots</button>
+                <button v-if="isAdmin && canRemoveMembers && m.userId !== groupsStore.currentGroup.adminId" class="text-xs text-danger-600 hover:text-danger-700 py-1.5 -my-1.5 cursor-pointer" @click="openRemoveModal(m)">Remove</button>
                 </div>
               </div>
             </div>
@@ -834,7 +834,7 @@ async function handleVoid(member) {
               <p class="text-xs text-muted mt-0.5">Approve or reject members waiting to join.</p>
             </div>
             <div class="divide-y divide-line-subtle">
-              <div v-for="r in groupsStore.pendingMembers" :key="r.id" class="flex items-center gap-4 px-5 py-3.5">
+              <div v-for="r in groupsStore.pendingMembers" :key="r.id" class="flex flex-wrap items-center gap-4 px-5 py-3.5">
                 <div class="flex-1 min-w-0">
                   <p class="text-sm font-medium text-fg truncate">{{ r.displayName }}</p>
                   <p class="text-xs text-muted truncate">{{ r.email }}</p>
@@ -889,8 +889,8 @@ async function handleVoid(member) {
               <span class="text-xs text-muted w-5 text-right tabular-nums">{{ idx + 1 }}.</span>
               <AppAvatar :name="groupsStore.approvedMembers.find((m) => m.id === memberId)?.displayName" :id="memberId" size="sm" />
               <div class="flex-1 min-w-0">
-                <span class="text-sm font-medium text-fg">{{ groupsStore.approvedMembers.find((m) => m.id === memberId)?.displayName || memberId }}</span>
-                <span class="text-xs text-muted ml-2">slot {{ scheduleOrder.slice(0, idx + 1).filter((id) => id === memberId).length }}/{{ memberSlots(groupsStore.approvedMembers.find((m) => m.id === memberId)) }}</span>
+                <p class="text-sm font-medium text-fg truncate">{{ groupsStore.approvedMembers.find((m) => m.id === memberId)?.displayName || memberId }}</p>
+                <p class="text-xs text-muted">slot {{ scheduleOrder.slice(0, idx + 1).filter((id) => id === memberId).length }}/{{ memberSlots(groupsStore.approvedMembers.find((m) => m.id === memberId)) }}</p>
               </div>
               <div class="flex gap-1">
                 <button :disabled="idx === 0" class="p-2 rounded-lg text-fg-4 hover:text-primary-700 hover:bg-line disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" aria-label="Move up" @click="moveTurn(idx, 'up')"><ChevronUp class="w-4 h-4" /></button>

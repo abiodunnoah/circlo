@@ -63,7 +63,7 @@ function open(g) {
           <AppAvatar :name="g.name" :id="g.id" size="lg" />
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
-              <h3 class="font-semibold text-fg truncate">{{ g.name }}</h3>
+              <h3 class="font-semibold text-fg truncate min-w-0">{{ g.name }}</h3>
               <AppStatusBadge v-if="g.role === 'admin'" status="active" label="Admin" />
             </div>
             <p class="text-sm text-muted truncate">

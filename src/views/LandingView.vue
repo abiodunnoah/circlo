@@ -94,7 +94,7 @@ function getStarted() {
               <span class="text-xs font-semibold text-success-700 bg-success-100 rounded-full px-2.5 py-1">Active</span>
             </div>
             <div class="flex items-center gap-6">
-              <AppProgressRing :value="7" :max="10" :size="120" :stroke="11" variant="primary">
+              <AppProgressRing :value="7" :max="10" :size="104" :stroke="10" variant="primary">
                 <span class="text-xl font-bold text-fg tabular-nums">7/10</span>
                 <span class="text-[11px] text-muted">paid</span>
               </AppProgressRing>
@@ -103,10 +103,10 @@ function getStarted() {
                   <span
                     v-for="(c, i) in avatarColors"
                     :key="i"
-                    class="w-9 h-9 rounded-full ring-2 ring-card -ml-2 first:ml-0"
+                    class="w-8 h-8 rounded-full ring-2 ring-card -ml-2 first:ml-0"
                     :class="c"
                   />
-                  <span class="w-9 h-9 rounded-full ring-2 ring-card -ml-2 bg-line text-[11px] font-semibold text-fg-2 flex items-center justify-center">+6</span>
+                  <span class="w-8 h-8 rounded-full ring-2 ring-card -ml-2 bg-line text-[11px] font-semibold text-fg-2 flex items-center justify-center">+6</span>
                 </div>
                 <div class="rounded-lg bg-line-subtle px-3 py-2">
                   <p class="text-[11px] text-muted">Rotation progress</p>
@@ -194,16 +194,16 @@ function getStarted() {
         <div>
           <p class="text-sm font-semibold text-fg mb-3">Product</p>
           <ul class="space-y-2 text-sm text-muted">
-            <li><button class="hover:text-fg cursor-pointer" @click="router.push({ name: 'Landing', hash: '#how-it-works' })">How it works</button></li>
-            <li><button class="hover:text-fg cursor-pointer" @click="router.push({ name: 'Landing', hash: '#features' })">Features</button></li>
-            <li><button class="hover:text-fg cursor-pointer" @click="getStarted">Get started</button></li>
+            <li><button class="hover:text-fg py-1 cursor-pointer" @click="router.push({ name: 'Landing', hash: '#how-it-works' })">How it works</button></li>
+            <li><button class="hover:text-fg py-1 cursor-pointer" @click="router.push({ name: 'Landing', hash: '#features' })">Features</button></li>
+            <li><button class="hover:text-fg py-1 cursor-pointer" @click="getStarted">Get started</button></li>
           </ul>
         </div>
         <div>
           <p class="text-sm font-semibold text-fg mb-3">Account</p>
           <ul class="space-y-2 text-sm text-muted">
-            <li><button class="hover:text-fg cursor-pointer" @click="router.push({ name: 'Login' })">Log in</button></li>
-            <li><button class="hover:text-fg cursor-pointer" @click="router.push({ name: 'Register' })">Create account</button></li>
+            <li><button class="hover:text-fg py-1 cursor-pointer" @click="router.push({ name: 'Login' })">Log in</button></li>
+            <li><button class="hover:text-fg py-1 cursor-pointer" @click="router.push({ name: 'Register' })">Create account</button></li>
           </ul>
         </div>
       </div>

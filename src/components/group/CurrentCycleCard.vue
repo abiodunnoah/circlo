@@ -29,7 +29,7 @@ defineEmits(['confirm-payout', 'start-cycle'])
 <template>
   <AppCard>
     <div class="flex flex-col sm:flex-row sm:items-start gap-6">
-      <div class="flex items-center gap-4 shrink-0">
+      <div class="flex flex-wrap items-center gap-4">
         <AppProgressRing
           :value="paid"
           :max="total || 1"
