@@ -1,15 +1,22 @@
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGroupsStore } from '@/stores/groups'
 import { useContributionsStore } from '@/stores/contributions'
 import { createNotification } from '@/stores/notifications'
 import { useToast } from '@/composables/useToast'
-import { CalendarClock, ChevronUp, ChevronDown, AlertTriangle } from '@lucide/vue'
+import {
+  CalendarClock,
+  ChevronUp,
+  ChevronDown,
+  AlertTriangle,
+  UserPlus,
+  Copy,
+  ShieldAlert,
+} from '@lucide/vue'
 import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppModal from '@/components/common/AppModal.vue'
-import AppBackButton from '@/components/common/AppBackButton.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 import AppProgress from '@/components/common/AppProgress.vue'
 import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
@@ -17,8 +24,12 @@ import AppButton from '@/components/common/AppButton.vue'
 import AppTabs from '@/components/common/AppTabs.vue'
 import AppAlert from '@/components/common/AppAlert.vue'
 import AppCard from '@/components/common/AppCard.vue'
+import AppMoney from '@/components/common/AppMoney.vue'
 import TableWrap from '@/components/common/TableWrap.vue'
 import PayoutTimeline from '@/components/common/PayoutTimeline.vue'
+import GroupHeader from '@/components/group/GroupHeader.vue'
+import CurrentCycleCard from '@/components/group/CurrentCycleCard.vue'
+import RotationPreview from '@/components/group/RotationPreview.vue'
 import { formatNaira } from '@/utils/format'
 
 function formatCycleDate(timestamp) {
@@ -58,7 +69,17 @@ const contributionsStore = useContributionsStore()
 const toast = useToast()
 
 const groupId = route.params.id
-const tab = ref(route.query.tab === 'pending' ? 'pending' : route.query.tab === 'contributions' ? 'contributions' : 'members')
+
+const initialTab = (() => {
+  const queryTab = route.query.tab
+  if (queryTab === 'pending') return 'members'
+  if (['overview', 'contributions', 'members', 'rotation', 'settings'].includes(queryTab)) {
+    return queryTab
+  }
+  return 'overview'
+})()
+
+const tab = ref(initialTab)
 const inviteLink = ref('')
 const showInviteModal = ref(false)
 const showRemoveModal = ref(false)
@@ -72,6 +93,8 @@ const forcePayout = ref(false)
 const showArchiveModal = ref(false)
 const showDeleteGroupModal = ref(false)
 const scheduleOrder = ref([])
+const pendingSection = ref(null)
+const shouldScrollToPending = ref(route.query.tab === 'pending')
 
 const selectedCycle = ref(0)
 const cycleOptions = ref([])
@@ -81,6 +104,7 @@ const editSlotsValue = ref(1)
 const showSlotsModal = ref(false)
 let unsubscribe = null
 let unsubscribeContributions = null
+let unsubscribeOverviewContributions = null
 
 onMounted(() => {
   unsubscribe = groupsStore.subscribeToGroup(groupId)
@@ -89,6 +113,10 @@ onMounted(() => {
 onUnmounted(() => {
   if (unsubscribe) unsubscribe()
   if (unsubscribeContributions) unsubscribeContributions()
+})
+
+onUnmounted(() => {
+  if (unsubscribeOverviewContributions) unsubscribeOverviewContributions()
 })
 
 const isAdmin = computed(() => groupsStore.currentGroup?.adminId === authStore.user?.uid)
@@ -119,15 +147,13 @@ const canRemoveMembers = computed(() => isAdmin.value && (currentCycle.value ===
 
 const canReorder = computed(() => isAdmin.value && (currentCycle.value === 0 || rotationConcluded.value))
 
-const detailTabs = computed(() => {
-  const tabs = [{ label: 'Members', value: 'members' }]
-  if (isAdmin.value) {
-    tabs.push({ label: 'Pending', value: 'pending', badge: groupsStore.pendingMembers.length || undefined })
-  }
-  tabs.push({ label: 'Contributions', value: 'contributions' })
-  if (isAdmin.value && canReorder.value) tabs.push({ label: 'Schedule', value: 'schedule' })
-  return tabs
-})
+const detailTabs = computed(() => [
+  { label: 'Overview', value: 'overview' },
+  { label: 'Contributions', value: 'contributions' },
+  { label: 'Members', value: 'members', badge: groupsStore.pendingMembers.length || undefined },
+  { label: 'Rotation', value: 'rotation' },
+  { label: 'Settings', value: 'settings' },
+])
 
 const nextMember = computed(() => {
   const unreceived = eligibleMembers.value
@@ -189,6 +215,53 @@ const canConfirmPayout = computed(() => {
   return unpaidDuesCount.value === 0
 })
 
+const currentSlots = computed(
+  () => groupsStore.currentGroup?.totalSlots || groupsStore.currentGroup?.totalMembers || 1,
+)
+
+const currentPot = computed(() => {
+  const group = groupsStore.currentGroup
+  if (!group) return 0
+  return Number(group.contributionAmount || 0) * currentSlots.value
+})
+
+const currentRecipientMember = computed(() => {
+  const recipientId = groupsStore.currentGroup?.currentCycleRecipientId
+  if (!recipientId) return null
+  return groupsStore.approvedMembers.find((m) => m.id === recipientId) || null
+})
+
+const rotationProgress = computed(() => ({
+  value: currentCycle.value,
+  max: currentSlots.value,
+  label: `Rotation progress · Cycle ${currentCycle.value} of ${currentSlots.value}`,
+}))
+
+const contributionSummary = computed(() => {
+  const paid = contributionRows.value.filter((r) => r.isPaid && !r.isVoid).length
+  const unpaid = contributionRows.value.filter((r) => !r.isPaid && !r.isVoid).length
+  return { paid, unpaid, total: contributionRows.value.length }
+})
+
+const canConfirmPayoutOverview = computed(
+  () =>
+    isAdmin.value &&
+    currentCycle.value > 0 &&
+    !!groupsStore.currentGroup?.currentCycleRecipientId &&
+    !cyclePayoutConfirmed.value &&
+    unpaidDuesCount.value === 0,
+)
+
+const showConfirmPayoutOnOverview = computed(
+  () => isAdmin.value && !cyclePayoutConfirmed.value && currentCycle.value > 0,
+)
+
+const confirmPayoutTitle = computed(() =>
+  canConfirmPayoutOverview.value
+    ? ''
+    : 'Some members have not paid yet — use Force Payout in the Contributions tab.',
+)
+
 watch(
   () => groupsStore.currentGroup?.currentCycle,
   (cycle) => {
@@ -226,8 +299,35 @@ watch(selectedCycle, (cycle) => {
 watch(
   () => tab.value,
   (value) => {
-    if (value === 'schedule') initSchedule()
+    if (value === 'rotation') initSchedule()
   },
+)
+
+watch(
+  () => groupsStore.currentGroupStatus,
+  async (status) => {
+    if (status !== 'ready' || !shouldScrollToPending.value) return
+    await nextTick()
+    pendingSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    shouldScrollToPending.value = false
+  },
+)
+
+watch(
+  [() => tab.value, currentCycle],
+  ([value, cycle]) => {
+    if (value === 'overview' && cycle >= 1) {
+      if (unsubscribeOverviewContributions) unsubscribeOverviewContributions()
+      unsubscribeOverviewContributions = contributionsStore.subscribeToCycleContributions(
+        groupId,
+        selectedCycle.value,
+      )
+    } else if (unsubscribeOverviewContributions) {
+      unsubscribeOverviewContributions()
+      unsubscribeOverviewContributions = null
+    }
+  },
+  { immediate: true },
 )
 
 async function copyInviteLink() {
@@ -507,105 +607,70 @@ async function handleVoid(member) {
       </AppCard>
     </div>
 
-    <div v-else-if="groupsStore.currentGroupStatus === 'ready' && groupsStore.currentGroup">
-      <AppBackButton :fallback="{ name: 'GroupList' }" />
-      <AppCard class="mb-6">
-        <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-          <div class="min-w-0">
-            <h1 class="text-2xl font-bold text-fg break-words">{{ groupsStore.currentGroup.name }}</h1>
-            <p class="text-sm text-muted mt-1">
-              {{ formatNaira(groupsStore.currentGroup.contributionAmount) }}/{{ groupsStore.currentGroup.frequency }}
-              &middot; Cycle {{ groupsStore.currentGroup.currentCycle }}
-              &middot; {{ groupsStore.currentGroup.totalMembers }} members
-              &middot; {{ groupsStore.currentGroup.totalSlots || groupsStore.currentGroup.totalMembers }} slots
-            </p>
-            <p v-if="groupsStore.currentGroup.currentCycleStartDate" class="text-xs text-muted mt-0.5">
-              Cycle started {{ formatCycleDate(groupsStore.currentGroup.currentCycleStartDate) }}
-            </p>
-            <p v-if="isAdmin" class="text-xs text-accent-600 font-medium mt-1">You are the admin</p>
-          </div>
-          <div class="flex flex-wrap gap-2 shrink-0">
-            <AppButton v-if="isAdmin" variant="secondary" @click="copyInviteLink">Copy Invite Link</AppButton>
-            <AppButton
-              v-if="isAdmin"
-              variant="primary"
-              :disabled="!canStartCycle"
-              :title="canStartCycle ? '' : 'Finish the current cycle before starting a new one'"
-              @click="showCycleModal = true"
-            >
-              Start New Cycle
-            </AppButton>
-            <AppButton v-if="isAdmin && groupsStore.currentGroup.status !== 'completed'" variant="outline-danger" @click="currentCycle === 0 && contributionRows.every(r => !r.isPaid) ? showDeleteGroupModal = true : showArchiveModal = true">
-              {{ currentCycle === 0 && contributionRows.every(r => !r.isPaid) ? 'Delete Group' : 'Archive Group' }}
-            </AppButton>
-          </div>
-        </div>
-        <div class="mt-4">
-          <AppProgress
-            :value="groupsStore.currentGroup.currentCycle"
-            :max="groupsStore.currentGroup.totalSlots || groupsStore.currentGroup.totalMembers || 1"
-            :label="`Rotation progress · Cycle ${groupsStore.currentGroup.currentCycle} of ${groupsStore.currentGroup.totalSlots || groupsStore.currentGroup.totalMembers || 1}`"
-          />
-        </div>
-      </AppCard>
+    <template v-else-if="groupsStore.currentGroupStatus === 'ready' && groupsStore.currentGroup">
+      <GroupHeader
+        :group="groupsStore.currentGroup"
+        :is-admin="isAdmin"
+        :progress="rotationProgress"
+        @invite="copyInviteLink"
+        @copy-invite="copyInviteLink"
+        @settings="tab = 'settings'"
+      />
 
       <AppTabs v-model="tab" :tabs="detailTabs" class="mb-6" />
 
-      <AppCard v-if="tab === 'members'" padding="p-0" class="overflow-hidden">
-        <div class="divide-y divide-line-subtle">
-          <div v-for="m in groupsStore.approvedMembers" :key="m.id" class="flex items-start gap-3 px-4 sm:px-5 py-3.5">
-            <span class="text-sm font-medium text-muted w-5 text-right shrink-0 tabular-nums mt-1.5">{{ (m.turnPositions?.[0] ?? (m.rotationOrder || 1) - 1) + 1 }}</span>
-            <AppAvatar :name="m.displayName" :id="m.id" size="md" class="mt-0.5" />
-            <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-fg truncate">
-                {{ m.displayName }}
-                <span v-if="m.userId === groupsStore.currentGroup.adminId" class="text-xs text-accent-600 font-medium">(admin)</span>
-              </p>
-              <p class="text-xs text-muted truncate">{{ m.email }}</p>
-              <p class="text-xs text-accent-600 truncate">{{ memberSlots(m) === 1 ? '1 slot' : `${memberSlots(m)} slots` }} &middot; received {{ m.receivedCount || 0 }}/{{ memberSlots(m) }}</p>
+      <div v-if="tab === 'overview'" class="space-y-6">
+        <CurrentCycleCard
+          :paid="contributionStats.paid"
+          :total="contributionStats.total"
+          :current-pot="currentPot"
+          :next-recipient-name="nextMember?.displayName || '—'"
+          :current-cycle="currentCycle"
+          :total-slots="currentSlots"
+          :cycle-payout-confirmed="cyclePayoutConfirmed"
+          :unpaid-dues-count="unpaidDuesCount"
+          :unpaid-member-names="unpaidMemberNames"
+          :show-confirm-payout="showConfirmPayoutOnOverview"
+          :confirm-disabled="!canConfirmPayoutOverview"
+          :confirm-title="confirmPayoutTitle"
+          :show-start-cycle="canStartCycle"
+          :start-disabled="!canStartCycle"
+          :start-title="canStartCycle ? '' : 'Finish the current cycle before starting a new one'"
+          @confirm-payout="openPayoutModal(currentRecipientMember, false)"
+          @start-cycle="showCycleModal = true"
+        />
+
+        <RotationPreview
+          :members="groupsStore.approvedMembers"
+          :turn-order="groupsStore.currentGroup?.turnOrder"
+          :current-recipient-id="groupsStore.currentGroup?.currentCycleRecipientId || ''"
+          @show-rotation="tab = 'rotation'"
+        />
+
+        <AppCard>
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <h3 class="text-sm font-semibold text-fg">Contribution summary</h3>
+              <p class="text-xs text-muted mt-0.5">Paid vs unpaid for Cycle {{ selectedCycle }}.</p>
             </div>
-            <div class="flex flex-col items-end gap-1.5 shrink-0">
-              <template v-if="(m.joinedCycle ?? 1) > currentCycle">
-                <AppStatusBadge status="default" :label="`Joins cycle ${m.joinedCycle}`" />
-              </template>
-              <template v-else>
-                <AppStatusBadge v-if="m.hasReceived" status="received" />
-                <AppStatusBadge v-else-if="nextMember?.id === m.id" status="next" />
-                <AppStatusBadge v-else status="default" label="Waiting" />
-              </template>
-              <div class="flex gap-2">
-                <button v-if="isAdmin && canReorder" class="text-xs text-primary-700 hover:text-primary-800 py-1 -my-1 cursor-pointer" @click="openSlotsModal(m)">Slots</button>
-                <button v-if="isAdmin && canRemoveMembers && m.userId !== groupsStore.currentGroup.adminId" class="text-xs text-danger-600 hover:text-danger-700 py-1 -my-1 cursor-pointer" @click="openRemoveModal(m)">Remove</button>
-              </div>
+            <AppButton variant="secondary" size="sm" class="shrink-0" @click="tab = 'contributions'">
+              View contributions
+            </AppButton>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mt-4">
+            <div class="rounded-lg bg-line-subtle px-4 py-3">
+              <p class="text-xs text-muted">Paid</p>
+              <p class="text-xl font-bold text-success-600 tabular-nums">{{ contributionSummary.paid }}</p>
+            </div>
+            <div class="rounded-lg bg-line-subtle px-4 py-3">
+              <p class="text-xs text-muted">Unpaid</p>
+              <p class="text-xl font-bold text-warning-600 tabular-nums">{{ contributionSummary.unpaid }}</p>
             </div>
           </div>
-          <div v-if="!groupsStore.approvedMembers.length" class="px-5 py-8 text-center text-sm text-muted">No members yet</div>
-        </div>
-      </AppCard>
+        </AppCard>
+      </div>
 
-      <AppCard v-if="tab === 'pending'" padding="p-0">
-        <div class="divide-y divide-line-subtle">
-          <div v-for="r in groupsStore.pendingMembers" :key="r.id" class="flex items-center gap-4 px-5 py-3.5">
-            <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-fg truncate">{{ r.displayName }}</p>
-              <p class="text-xs text-muted truncate">{{ r.email }}</p>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <label class="text-xs text-muted">Slots</label>
-              <select v-model="pendingSlots[r.id]" class="rounded-lg border border-line px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500">
-                <option v-for="n in 10" :key="n" :value="n">{{ n }}</option>
-              </select>
-            </div>
-            <div class="flex gap-2">
-              <AppButton variant="primary" size="xs" @click="handleApprove(r)">Approve</AppButton>
-              <AppButton variant="outline-danger" size="xs" @click="handleReject(r)">Reject</AppButton>
-            </div>
-          </div>
-          <div v-if="!groupsStore.pendingMembers.length" class="px-5 py-8 text-center text-sm text-muted">No pending requests</div>
-        </div>
-      </AppCard>
-
-      <AppCard v-if="tab === 'contributions'" padding="p-0" class="overflow-hidden">
+      <AppCard v-else-if="tab === 'contributions'" padding="p-0" class="overflow-hidden">
         <div class="px-5 py-3 bg-line-subtle border-b border-line">
           <div class="flex items-center justify-between gap-4 mb-3">
             <div class="flex items-center gap-2">
@@ -647,7 +712,8 @@ async function handleVoid(member) {
           </div>
         </div>
 
-        <TableWrap v-else-if="contributionRows.length">
+        <template v-else-if="contributionRows.length">
+          <TableWrap class="hidden sm:block">
             <thead>
               <tr class="border-b border-line-subtle text-left">
                 <th class="px-5 py-3 font-medium text-muted">Member</th>
@@ -685,69 +751,229 @@ async function handleVoid(member) {
                 </td>
               </tr>
             </tbody>
-        </TableWrap>
+          </TableWrap>
+
+          <div class="sm:hidden divide-y divide-line-subtle">
+            <div v-for="row in contributionRows" :key="row.member.id" class="px-5 py-4 space-y-2.5">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <AppAvatar :name="row.member.displayName" :id="row.member.id" size="sm" />
+                  <span class="font-medium text-fg truncate">{{ row.member.displayName }}</span>
+                </div>
+                <AppStatusBadge v-if="row.isVoid" status="void" label="Voided" />
+                <AppStatusBadge v-else-if="row.isOwing" status="owing" />
+                <AppStatusBadge v-else-if="row.isPaid" status="paid" />
+                <AppStatusBadge v-else status="pending" label="Unpaid" />
+              </div>
+              <div class="flex items-center justify-between gap-3 text-xs text-muted">
+                <span>Cycle {{ selectedCycle }}</span>
+                <span class="tabular-nums">{{ row.contribution ? formatNaira(row.contribution.amount) : formatNaira(groupsStore.currentGroup.contributionAmount * memberSlots(row.member)) }}</span>
+                <span>{{ row.contribution?.paidAt ? new Date(row.contribution.paidAt.toMillis ? row.contribution.paidAt.toMillis() : row.contribution.paidAt).toLocaleDateString() : '—' }}</span>
+              </div>
+              <div v-if="isAdmin" class="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
+                <AppButton v-if="!row.isPaid && !row.isVoid" variant="primary" size="xs" @click="openMarkPaidModal(row.member)">Mark Paid</AppButton>
+                <button v-if="!row.isPaid && !row.isVoid && selectedCycle === currentCycle && cycleStarted" class="text-xs text-warning-600 hover:text-warning-700 cursor-pointer" @click="handleRemindSingle(row.member)">Remind</button>
+                <button v-else-if="row.isPaid" class="text-xs text-danger-600 hover:text-danger-700 cursor-pointer" @click="handleVoid(row.member)">Void</button>
+                <AppButton v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && canConfirmPayout" variant="accent" size="xs" @click="openPayoutModal(row.member, false)">Confirm Payout</AppButton>
+                <button v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && !canConfirmPayout && unpaidDuesCount > 0" class="text-xs text-warning-700 hover:text-warning-800 font-medium cursor-pointer" title="Some members haven't paid yet — force confirm anyway" @click="openPayoutModal(row.member, true)">Force Payout</button>
+                <button v-if="cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId" class="text-xs text-accent-700 hover:text-accent-800 cursor-pointer" @click="handleUndoPayout(row.member)">Undo Payout</button>
+              </div>
+            </div>
+          </div>
+        </template>
 
         <div v-else class="px-5 py-10 text-center text-sm text-muted">
           {{ isAdmin ? 'No eligible members yet. Approve members to start collecting contributions.' : 'You are not part of the active rotation yet.' }}
         </div>
       </AppCard>
-    </div>
 
-    <div
-      v-if="tab === 'schedule' && groupsStore.currentGroupStatus === 'ready' && groupsStore.currentGroup"
-      class="space-y-6"
-    >
-      <AppCard padding="p-0" class="overflow-hidden">
-        <div class="px-5 py-4 border-b border-line">
-          <h3 class="text-sm font-semibold text-fg flex items-center gap-2">
-            <CalendarClock class="w-4 h-4 text-primary-600" />
-            Payout Order
-          </h3>
-          <p class="text-xs text-muted mt-0.5">Visual order of payout turns for the current rotation.</p>
-        </div>
-        <div class="px-5 py-4">
-          <PayoutTimeline
-            :members="groupsStore.approvedMembers"
-            :turn-order="groupsStore.currentGroup?.turnOrder"
-            :current-recipient-id="groupsStore.currentGroup?.currentCycleRecipientId || ''"
-          />
-        </div>
-      </AppCard>
+      <div v-else-if="tab === 'members'" class="space-y-6">
+        <AppCard padding="p-0" class="overflow-hidden">
+          <div class="px-5 py-4 border-b border-line">
+            <h3 class="text-sm font-semibold text-fg">Approved members</h3>
+            <p class="text-xs text-muted mt-0.5">{{ groupsStore.approvedMembers.length }} in rotation</p>
+          </div>
+          <div class="divide-y divide-line-subtle">
+            <div v-for="m in groupsStore.approvedMembers" :key="m.id" class="flex items-start gap-3 px-4 sm:px-5 py-3.5">
+              <span class="text-sm font-medium text-muted w-5 text-right shrink-0 tabular-nums mt-1.5">{{ (m.turnPositions?.[0] ?? (m.rotationOrder || 1) - 1) + 1 }}</span>
+              <AppAvatar :name="m.displayName" :id="m.id" size="md" class="mt-0.5" />
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-fg truncate">
+                  {{ m.displayName }}
+                  <span v-if="m.userId === groupsStore.currentGroup.adminId" class="text-xs text-accent-600 font-medium">(admin)</span>
+                </p>
+                <p class="text-xs text-muted truncate">{{ m.email }}</p>
+                <p class="text-xs text-accent-600 truncate">{{ memberSlots(m) === 1 ? '1 slot' : `${memberSlots(m)} slots` }} &middot; received {{ m.receivedCount || 0 }}/{{ memberSlots(m) }}</p>
+              </div>
+              <div class="flex flex-col items-end gap-1.5 shrink-0">
+                <template v-if="(m.joinedCycle ?? 1) > currentCycle">
+                  <AppStatusBadge status="default" :label="`Joins cycle ${m.joinedCycle}`" />
+                </template>
+                <template v-else>
+                  <AppStatusBadge v-if="m.hasReceived" status="received" />
+                  <AppStatusBadge v-else-if="nextMember?.id === m.id" status="next" />
+                  <AppStatusBadge v-else status="default" label="Waiting" />
+                </template>
+                <div class="flex gap-2">
+                  <button v-if="isAdmin && canReorder" class="text-xs text-primary-700 hover:text-primary-800 py-1 -my-1 cursor-pointer" @click="openSlotsModal(m)">Slots</button>
+                  <button v-if="isAdmin && canRemoveMembers && m.userId !== groupsStore.currentGroup.adminId" class="text-xs text-danger-600 hover:text-danger-700 py-1 -my-1 cursor-pointer" @click="openRemoveModal(m)">Remove</button>
+                </div>
+              </div>
+            </div>
+            <div v-if="!groupsStore.approvedMembers.length" class="px-5 py-8 text-center text-sm text-muted">No members yet</div>
+          </div>
+        </AppCard>
 
-      <AppCard padding="p-0" class="overflow-hidden">
-        <div class="flex items-center justify-between px-5 py-4 border-b border-line">
-          <div>
-            <h3 class="text-sm font-semibold text-fg">Edit Schedule</h3>
-            <p class="text-xs text-muted mt-0.5">Move turns up or down to interleave payouts. Each row is one payout turn.</p>
-          </div>
-          <div class="flex gap-2 shrink-0">
-            <AppButton variant="secondary" size="xs" @click="resetSchedule">Reset</AppButton>
-            <AppButton variant="primary" size="xs" @click="saveSchedule">Save</AppButton>
-          </div>
-        </div>
-        <div class="divide-y divide-line-subtle">
-          <div v-for="(memberId, idx) in scheduleOrder" :key="idx" class="flex items-center gap-3 px-5 py-2.5">
-            <span class="text-xs text-muted w-5 text-right tabular-nums">{{ idx + 1 }}.</span>
-            <AppAvatar :name="groupsStore.approvedMembers.find((m) => m.id === memberId)?.displayName" :id="memberId" size="sm" />
-            <div class="flex-1 min-w-0">
-              <span class="text-sm font-medium text-fg">{{ groupsStore.approvedMembers.find((m) => m.id === memberId)?.displayName || memberId }}</span>
-              <span class="text-xs text-muted ml-2">slot {{ scheduleOrder.slice(0, idx + 1).filter((id) => id === memberId).length }}/{{ memberSlots(groupsStore.approvedMembers.find((m) => m.id === memberId)) }}</span>
+        <div v-if="groupsStore.pendingMembers.length" ref="pendingSection">
+          <AppCard padding="p-0" class="overflow-hidden">
+            <div class="px-5 py-4 border-b border-line">
+              <h3 class="flex items-center gap-2 text-sm font-semibold text-fg">
+                Pending requests
+                <span class="rounded-full bg-danger-500 px-1.5 py-0.5 text-[11px] font-semibold text-inverse leading-none">{{ groupsStore.pendingMembers.length }}</span>
+              </h3>
+              <p class="text-xs text-muted mt-0.5">Approve or reject members waiting to join.</p>
             </div>
-            <div class="flex gap-1">
-              <button :disabled="idx === 0" class="p-2 rounded-lg text-fg-4 hover:text-primary-700 hover:bg-line disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" aria-label="Move up" @click="moveTurn(idx, 'up')"><ChevronUp class="w-4 h-4" /></button>
-              <button :disabled="idx === scheduleOrder.length - 1" class="p-2 rounded-lg text-fg-4 hover:text-primary-700 hover:bg-line disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" aria-label="Move down" @click="moveTurn(idx, 'down')"><ChevronDown class="w-4 h-4" /></button>
+            <div class="divide-y divide-line-subtle">
+              <div v-for="r in groupsStore.pendingMembers" :key="r.id" class="flex items-center gap-4 px-5 py-3.5">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-fg truncate">{{ r.displayName }}</p>
+                  <p class="text-xs text-muted truncate">{{ r.email }}</p>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <label class="text-xs text-muted">Slots</label>
+                  <select v-model="pendingSlots[r.id]" class="rounded-lg border border-line px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500">
+                    <option v-for="n in 10" :key="n" :value="n">{{ n }}</option>
+                  </select>
+                </div>
+                <div class="flex gap-2">
+                  <AppButton variant="primary" size="xs" @click="handleApprove(r)">Approve</AppButton>
+                  <AppButton variant="outline-danger" size="xs" @click="handleReject(r)">Reject</AppButton>
+                </div>
+              </div>
+            </div>
+          </AppCard>
+        </div>
+      </div>
+
+      <div v-else-if="tab === 'rotation'" class="space-y-6">
+        <AppCard padding="p-0" class="overflow-hidden">
+          <div class="px-5 py-4 border-b border-line">
+            <h3 class="text-sm font-semibold text-fg flex items-center gap-2">
+              <CalendarClock class="w-4 h-4 text-primary-600" />
+              Payout Order
+            </h3>
+            <p class="text-xs text-muted mt-0.5">Visual order of payout turns for the current rotation.</p>
+          </div>
+          <div class="px-5 py-4">
+            <PayoutTimeline
+              :members="groupsStore.approvedMembers"
+              :turn-order="groupsStore.currentGroup?.turnOrder"
+              :current-recipient-id="groupsStore.currentGroup?.currentCycleRecipientId || ''"
+            />
+          </div>
+        </AppCard>
+
+        <AppCard v-if="isAdmin && canReorder" padding="p-0" class="overflow-hidden">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-line">
+            <div>
+              <h3 class="text-sm font-semibold text-fg">Edit Schedule</h3>
+              <p class="text-xs text-muted mt-0.5">Move turns up or down to interleave payouts. Each row is one payout turn.</p>
+            </div>
+            <div class="flex gap-2 shrink-0">
+              <AppButton variant="secondary" size="xs" @click="resetSchedule">Reset</AppButton>
+              <AppButton variant="primary" size="xs" @click="saveSchedule">Save</AppButton>
             </div>
           </div>
-          <div v-if="!scheduleOrder.length" class="px-5 py-8 text-center text-sm text-muted">No approved members yet.</div>
-        </div>
-        <div class="px-5 py-3 border-t border-line space-y-1">
-          <p class="text-xs font-medium text-muted mb-1">Quick spread</p>
-          <div class="flex flex-wrap gap-1.5">
-            <button v-for="m in groupsStore.approvedMembers.filter((m) => memberSlots(m) > 1)" :key="m.id" class="text-xs text-primary-700 hover:text-primary-800 border border-primary-200 rounded-lg px-2.5 py-1 cursor-pointer" @click="spreadEvenly(m.id)">Spread {{ m.displayName }} evenly</button>
+          <div class="divide-y divide-line-subtle">
+            <div v-for="(memberId, idx) in scheduleOrder" :key="idx" class="flex items-center gap-3 px-5 py-2.5">
+              <span class="text-xs text-muted w-5 text-right tabular-nums">{{ idx + 1 }}.</span>
+              <AppAvatar :name="groupsStore.approvedMembers.find((m) => m.id === memberId)?.displayName" :id="memberId" size="sm" />
+              <div class="flex-1 min-w-0">
+                <span class="text-sm font-medium text-fg">{{ groupsStore.approvedMembers.find((m) => m.id === memberId)?.displayName || memberId }}</span>
+                <span class="text-xs text-muted ml-2">slot {{ scheduleOrder.slice(0, idx + 1).filter((id) => id === memberId).length }}/{{ memberSlots(groupsStore.approvedMembers.find((m) => m.id === memberId)) }}</span>
+              </div>
+              <div class="flex gap-1">
+                <button :disabled="idx === 0" class="p-2 rounded-lg text-fg-4 hover:text-primary-700 hover:bg-line disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" aria-label="Move up" @click="moveTurn(idx, 'up')"><ChevronUp class="w-4 h-4" /></button>
+                <button :disabled="idx === scheduleOrder.length - 1" class="p-2 rounded-lg text-fg-4 hover:text-primary-700 hover:bg-line disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" aria-label="Move down" @click="moveTurn(idx, 'down')"><ChevronDown class="w-4 h-4" /></button>
+              </div>
+            </div>
+            <div v-if="!scheduleOrder.length" class="px-5 py-8 text-center text-sm text-muted">No approved members yet.</div>
           </div>
-        </div>
-      </AppCard>
-    </div>
+          <div class="px-5 py-3 border-t border-line space-y-1">
+            <p class="text-xs font-medium text-muted mb-1">Quick spread</p>
+            <div class="flex flex-wrap gap-1.5">
+              <button v-for="m in groupsStore.approvedMembers.filter((m) => memberSlots(m) > 1)" :key="m.id" class="text-xs text-primary-700 hover:text-primary-800 border border-primary-200 rounded-lg px-2.5 py-1 cursor-pointer" @click="spreadEvenly(m.id)">Spread {{ m.displayName }} evenly</button>
+            </div>
+          </div>
+        </AppCard>
+      </div>
+
+      <div v-else-if="tab === 'settings'" class="space-y-6">
+        <AppCard padding="p-0" class="overflow-hidden">
+          <div class="px-5 py-4 border-b border-line">
+            <h3 class="text-sm font-semibold text-fg">Group information</h3>
+          </div>
+          <dl class="grid gap-x-6 gap-y-4 px-5 py-4 sm:grid-cols-2">
+            <div>
+              <dt class="text-xs text-muted">Name</dt>
+              <dd class="text-sm font-medium text-fg mt-0.5 break-words">{{ groupsStore.currentGroup.name }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted">Contribution amount</dt>
+              <dd class="mt-0.5"><AppMoney :value="groupsStore.currentGroup.contributionAmount" size="sm" /></dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted">Frequency</dt>
+              <dd class="text-sm font-medium text-fg mt-0.5 capitalize">{{ groupsStore.currentGroup.frequency }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted">Start date</dt>
+              <dd class="text-sm font-medium text-fg mt-0.5">{{ formatCycleDate(groupsStore.currentGroup.startDate) || '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted">Members</dt>
+              <dd class="text-sm font-medium text-fg mt-0.5">{{ groupsStore.currentGroup.totalMembers }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted">Slots</dt>
+              <dd class="text-sm font-medium text-fg mt-0.5">{{ groupsStore.currentGroup.totalSlots || groupsStore.currentGroup.totalMembers }}</dd>
+            </div>
+          </dl>
+        </AppCard>
+
+        <AppCard padding="p-0" class="overflow-hidden">
+          <div class="px-5 py-4 border-b border-line">
+            <h3 class="text-sm font-semibold text-fg">Invite &amp; access</h3>
+            <p class="text-xs text-muted mt-0.5">Share the invite link with people you want in this group.</p>
+          </div>
+          <div class="flex flex-wrap gap-2 px-5 py-4">
+            <AppButton variant="primary" @click="copyInviteLink">
+              <UserPlus class="w-4 h-4" />
+              Invite members
+            </AppButton>
+            <AppButton v-if="isAdmin" variant="secondary" @click="copyInviteLink">
+              <Copy class="w-4 h-4" />
+              Copy invite link
+            </AppButton>
+          </div>
+        </AppCard>
+
+        <AppCard v-if="isAdmin" padding="p-0" class="overflow-hidden">
+          <div class="px-5 py-4 border-b border-line bg-danger-50">
+            <h3 class="text-sm font-semibold text-danger-700 flex items-center gap-2">
+              <ShieldAlert class="w-4 h-4" />
+              Danger zone
+            </h3>
+            <p class="text-xs text-danger-700 mt-0.5">Archive or delete this group. Contribution history is preserved when archiving.</p>
+          </div>
+          <div class="px-5 py-4">
+            <AppButton variant="outline-danger" @click="currentCycle === 0 && contributionRows.every(r => !r.isPaid) ? showDeleteGroupModal = true : showArchiveModal = true">
+              {{ currentCycle === 0 && contributionRows.every(r => !r.isPaid) ? 'Delete group' : 'Archive group' }}
+            </AppButton>
+          </div>
+        </AppCard>
+      </div>
+    </template>
 
     <AppCard v-else-if="groupsStore.currentGroupStatus === 'not_found'" padding="p-10" class="text-center">
       <p class="text-sm text-muted mb-4">This group doesn't exist or you don't have access to it.</p>

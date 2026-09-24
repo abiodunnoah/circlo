@@ -21,7 +21,7 @@ onMounted(() => {
 })
 
 function open(g) {
-  router.push({ name: 'GroupDetail', params: { id: g.id } })
+  router.push({ name: 'GroupDetail', params: { id: g.id }, query: { tab: 'rotation' } })
 }
 </script>
 
