@@ -21,6 +21,7 @@ import {
 } from '@lucide/vue'
 import AppModal from '@/components/common/AppModal.vue'
 import AppButton from '@/components/common/AppButton.vue'
+import AppLogo from '@/components/common/AppLogo.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 
 const router = useRouter()
@@ -132,7 +133,7 @@ onUnmounted(() => {
     <div class="max-w-7xl mx-auto px-4 sm:px-6">
       <div class="flex items-center justify-between h-16">
         <button class="flex items-center gap-2 cursor-pointer" @click="navigate(authStore.user ? 'Dashboard' : 'Landing')">
-          <span class="text-xl font-bold text-primary-700">Circlo</span>
+          <AppLogo :size="30" />
         </button>
 
         <div v-if="authStore.user" class="hidden md:flex items-center gap-5">
