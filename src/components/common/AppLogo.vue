@@ -4,6 +4,7 @@ import { computed } from 'vue'
 const props = defineProps({
   variant: { type: String, default: 'full' },
   size: { type: Number, default: 28 },
+  tone: { type: String, default: 'brand' },
 })
 
 const wordmarkSize = computed(() => Math.round(props.size * 0.6))
@@ -17,7 +18,8 @@ const wordmarkSize = computed(() => Math.round(props.size * 0.6))
       viewBox="0 0 32 32"
       fill="none"
       aria-hidden="true"
-      class="text-primary-600 shrink-0"
+      class="shrink-0"
+      :class="tone === 'inverse' ? 'text-inverse' : 'text-primary-600'"
     >
       <circle
         cx="16"
@@ -33,7 +35,8 @@ const wordmarkSize = computed(() => Math.round(props.size * 0.6))
     </svg>
     <span
       v-if="variant === 'full'"
-      class="font-bold tracking-tight text-fg"
+      class="font-bold tracking-tight"
+      :class="tone === 'inverse' ? 'text-inverse' : 'text-fg'"
       :style="{ fontSize: wordmarkSize + 'px' }"
       >Circlo</span
     >

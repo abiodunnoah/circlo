@@ -1,217 +1,217 @@
 <script setup>
 import { useRouter } from 'vue-router'
-import { ShieldCheck, Eye, Users, FileText, PiggyBank, CheckCircle2, ArrowRight } from '@lucide/vue'
-import AppAvatar from '@/components/common/AppAvatar.vue'
+import { useAuthStore } from '@/stores/auth'
+import {
+  ArrowRight,
+  Users,
+  Wallet,
+  RefreshCw,
+  ShieldCheck,
+  Bell,
+  BarChart3,
+  CheckCircle2,
+} from '@lucide/vue'
 import AppButton from '@/components/common/AppButton.vue'
-import AppCard from '@/components/common/AppCard.vue'
-import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
+import AppLogo from '@/components/common/AppLogo.vue'
+import AppProgressRing from '@/components/common/AppProgressRing.vue'
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 const steps = [
   {
-    num: '01',
-    title: 'Create a Group',
-    text: 'Set up a savings group, define the contribution amount, and choose weekly or monthly cycles.',
+    icon: Users,
+    title: 'Create your circle',
+    text: 'Set up your Ajo or Esusu group with the contribution amount and frequency.',
   },
   {
-    num: '02',
-    title: 'Invite Members',
-    text: 'Share the invite link with your group via WhatsApp or any channel. Approve members as they join.',
+    icon: Wallet,
+    title: 'Invite your members',
+    text: 'Share an invite link. Members request to join and you approve them.',
   },
   {
-    num: '03',
-    title: 'Save Together',
-    text: 'Track contributions, see who received the pot, and export reports — all in one place.',
+    icon: RefreshCw,
+    title: 'Track contributions and turns',
+    text: 'Record payments, follow the payout order, and confirm each cycle.',
   },
 ]
 
 const features = [
-  {
-    icon: Eye,
-    title: 'Transparent Tracking',
-    text: 'Members see who has paid, who has received, and who is next — no secrets, no disputes.',
-  },
-  {
-    icon: Users,
-    title: 'Clear Payout Order',
-    text: 'Set the rotation once and arrange individual turns. Everyone sees the exact payout sequence.',
-  },
-  {
-    icon: FileText,
-    title: 'Export Reports',
-    text: 'Generate PDF reports per cycle or per group for your records and accountability.',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Reliable Records',
-    text: 'A permanent digital ledger replaces paper notes and chat threads. Every payment is recorded.',
-  },
+  { icon: Users, title: 'Group management', text: 'Organise members, slots and approvals in one place.' },
+  { icon: Wallet, title: 'Contribution tracking', text: 'Mark who has paid, who is owing, and keep a clean ledger.' },
+  { icon: RefreshCw, title: 'Rotation tracking', text: 'See the full payout order and whose turn is next.' },
+  { icon: ShieldCheck, title: 'Transparent records', text: 'Every contribution, void and payout is preserved for audit.' },
+  { icon: Bell, title: 'Notifications', text: 'Members are told when they pay and when it’s their turn.' },
+  { icon: BarChart3, title: 'Reports', text: 'Understand what happened financially and export to PDF.' },
 ]
 
-const mockPayouts = [
-  { name: 'Ada Okafor', status: 'received' },
-  { name: 'Bola Adeyemi', status: 'received' },
-  { name: 'Chidi Nwosu', status: 'next' },
-  { name: 'Damilola Bello', status: 'waiting' },
-]
+const avatarColors = ['bg-avatar-1-bg', 'bg-avatar-2-bg', 'bg-avatar-3-bg', 'bg-avatar-5-bg']
 
-function nav(route) {
-  router.push({ name: route })
+function getStarted() {
+  router.push({ name: authStore.user ? 'Dashboard' : 'Register' })
 }
 </script>
 
 <template>
   <div>
-    <section class="max-w-6xl mx-auto px-4 pt-16 sm:pt-24 pb-16">
-      <div class="grid lg:grid-cols-2 gap-12 items-center">
-        <div class="text-center lg:text-left">
-          <span
-            class="inline-flex items-center gap-1.5 bg-primary-50 text-primary-700 text-xs font-medium rounded-full px-3 py-1 mb-4"
-          >
-            <PiggyBank class="w-3.5 h-3.5" />
-            Built for Ajo, Esusu & ROSCAs
+    <!-- Hero -->
+    <section class="relative overflow-hidden">
+      <div class="absolute inset-0 -z-10 bg-gradient-to-b from-primary-50 to-surface dark:from-primary-50/40" />
+      <div class="max-w-6xl mx-auto px-4 pt-16 sm:pt-24 pb-16 grid lg:grid-cols-2 gap-12 items-center">
+        <div>
+          <span class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-primary-700 bg-primary-100 rounded-full px-3 py-1">
+            DIGITAL AJO &amp; ESUSU
           </span>
-          <h1 class="text-4xl sm:text-5xl font-bold text-fg leading-tight mb-4">
-            Digital savings groups you can
-            <span class="text-primary-700"> actually trust</span>
+          <h1 class="mt-5 text-4xl sm:text-5xl font-bold text-fg leading-tight">
+            Save together.<br />Stay accountable.
           </h1>
-          <p class="text-lg text-muted max-w-xl mx-auto lg:mx-0 mb-8">
-            Circlo brings your traditional savings group online — transparent contribution tracking, a
-            clear payout order, and reports everyone can see. No more paper ledgers or WhatsApp disputes.
+          <p class="mt-5 text-base sm:text-lg text-fg-2 max-w-lg">
+            Circlo makes Ajo and Esusu groups simple to manage. Track contributions, follow the
+            payout order, and always know whose turn is next.
           </p>
-          <div
-            class="flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-3"
-          >
-            <AppButton
-              variant="primary"
-              size="lg"
-              class="w-full sm:w-auto"
-              @click="nav('Register')"
-            >
-              Get Started Free
+          <div class="mt-8 flex flex-wrap gap-3">
+            <AppButton size="lg" @click="getStarted">
+              Get started
+              <ArrowRight class="w-4 h-4" />
             </AppButton>
             <AppButton
+              size="lg"
               variant="secondary"
-              size="lg"
-              class="w-full sm:w-auto"
-              @click="nav('Login')"
+              @click="router.push({ name: 'Landing', hash: '#how-it-works' })"
             >
-              Sign In
+              See how it works
             </AppButton>
           </div>
-          <div
-            class="flex items-center justify-center lg:justify-start gap-5 mt-6 text-xs text-muted"
-          >
-            <span class="flex items-center gap-1.5">
-              <ShieldCheck class="w-4 h-4 text-primary-600" />
-              Secure by design
-            </span>
-            <span class="flex items-center gap-1.5">
-              <Eye class="w-4 h-4 text-primary-600" />
-              Transparent payouts
-            </span>
-          </div>
         </div>
 
-        <div class="hidden lg:block">
-          <div class="relative">
-            <div class="absolute -inset-4 bg-primary-100/50 rounded-3xl blur-2xl" aria-hidden="true" />
-            <div class="relative bg-card rounded-2xl border border-line shadow-xl p-5 max-w-sm mx-auto">
-              <div class="flex items-center justify-between mb-4">
-                <div>
-                  <p class="text-xs text-muted">Family Savings Circle</p>
-                  <p class="text-sm font-semibold text-fg tabular-nums">₦500,000 pot</p>
-                </div>
-                <span class="text-xs bg-primary-100 text-primary-700 rounded-full px-2.5 py-0.5 font-medium">
-                  Cycle 3 of 8
-                </span>
+        <div class="relative">
+          <div class="rounded-2xl border border-line bg-card shadow-xl p-6">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <p class="text-xs font-medium text-muted">Current pot</p>
+                <p class="text-2xl font-bold text-fg tabular-nums">₦0</p>
               </div>
-              <p class="text-xs font-medium text-muted mb-2">Payout order</p>
-              <ul class="space-y-2">
-                <li
-                  v-for="p in mockPayouts"
-                  :key="p.name"
-                  class="flex items-center justify-between gap-2"
-                >
-                  <div class="flex items-center gap-2 min-w-0">
-                    <AppAvatar :name="p.name" size="sm" />
-                    <span class="text-sm text-fg truncate">{{ p.name }}</span>
-                  </div>
-                  <AppStatusBadge
-                    :status="p.status === 'waiting' ? 'default' : p.status"
-                    :label="p.status === 'waiting' ? 'Waiting' : ''"
+              <span class="text-xs font-semibold text-success-700 bg-success-100 rounded-full px-2.5 py-1">Active</span>
+            </div>
+            <div class="flex items-center gap-6">
+              <AppProgressRing :value="7" :max="10" :size="120" :stroke="11" variant="primary">
+                <span class="text-xl font-bold text-fg tabular-nums">7/10</span>
+                <span class="text-[11px] text-muted">paid</span>
+              </AppProgressRing>
+              <div class="flex-1 space-y-3">
+                <div class="flex items-center">
+                  <span
+                    v-for="(c, i) in avatarColors"
+                    :key="i"
+                    class="w-9 h-9 rounded-full ring-2 ring-card -ml-2 first:ml-0"
+                    :class="c"
                   />
-                </li>
-              </ul>
+                  <span class="w-9 h-9 rounded-full ring-2 ring-card -ml-2 bg-line text-[11px] font-semibold text-fg-2 flex items-center justify-center">+6</span>
+                </div>
+                <div class="rounded-lg bg-line-subtle px-3 py-2">
+                  <p class="text-[11px] text-muted">Rotation progress</p>
+                  <p class="text-sm font-semibold text-fg">Cycle 3 of 10</p>
+                </div>
+              </div>
+            </div>
+            <div class="mt-4 h-2 rounded-full bg-line overflow-hidden">
+              <div class="h-full w-[70%] rounded-full bg-primary-600" />
             </div>
           </div>
         </div>
       </div>
     </section>
 
+    <!-- How it works -->
     <section id="how-it-works" class="bg-card py-16 border-y border-line">
-      <div class="max-w-5xl mx-auto px-4">
-        <h2 class="text-2xl font-bold text-center text-fg mb-12">How It Works</h2>
-        <div class="grid md:grid-cols-3 gap-6">
-          <div v-for="(step, i) in steps" :key="i" class="text-center">
-            <div
-              class="w-12 h-12 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center text-lg font-bold mx-auto mb-4"
-            >
-              {{ step.num }}
+      <div class="max-w-6xl mx-auto px-4">
+        <h2 class="text-2xl sm:text-3xl font-bold text-center text-fg mb-12">How it works</h2>
+        <div class="grid sm:grid-cols-3 gap-8">
+          <div v-for="(s, i) in steps" :key="i" class="text-center">
+            <div class="w-12 h-12 mx-auto rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center mb-4">
+              <component :is="s.icon" class="w-6 h-6" />
             </div>
-            <h3 class="font-semibold text-fg mb-2">{{ step.title }}</h3>
-            <p class="text-sm text-muted leading-relaxed">{{ step.text }}</p>
+            <p class="text-xs font-semibold text-primary-600 mb-1">Step {{ i + 1 }}</p>
+            <h3 class="font-semibold text-fg mb-1">{{ s.title }}</h3>
+            <p class="text-sm text-muted">{{ s.text }}</p>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="features" class="py-16 max-w-5xl mx-auto px-4">
-      <h2 class="text-2xl font-bold text-center text-fg mb-12">Everything You Need</h2>
-      <div class="grid sm:grid-cols-2 gap-6">
-        <AppCard v-for="(f, i) in features" :key="i">
-          <div
-            class="w-10 h-10 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center mb-3"
-          >
+    <!-- Features -->
+    <section id="features" class="py-16 max-w-6xl mx-auto px-4">
+      <h2 class="text-2xl sm:text-3xl font-bold text-center text-fg mb-12">
+        Everything your circle needs
+      </h2>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div
+          v-for="(f, i) in features"
+          :key="i"
+          class="rounded-xl border border-line bg-card p-5 shadow-sm"
+        >
+          <div class="w-10 h-10 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center mb-3">
             <component :is="f.icon" class="w-5 h-5" />
           </div>
           <h3 class="font-semibold text-fg mb-1">{{ f.title }}</h3>
           <p class="text-sm text-muted">{{ f.text }}</p>
-        </AppCard>
-      </div>
-    </section>
-
-    <section class="max-w-5xl mx-auto px-4 pb-20">
-      <div
-        class="rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 text-inverse p-8 sm:p-12 text-center"
-      >
-        <h2 class="text-2xl sm:text-3xl font-bold mb-3">Start your savings circle today</h2>
-        <p class="text-primary-100 max-w-xl mx-auto mb-6">
-          Create a group in minutes and invite your members with a single link.
-        </p>
-        <button
-          class="inline-flex items-center gap-2 bg-card text-primary-700 px-6 py-3 rounded-lg text-sm font-semibold hover:bg-primary-50 cursor-pointer"
-          @click="nav('Register')"
-        >
-          Get Started Free
-          <ArrowRight class="w-4 h-4" />
-        </button>
-        <div class="flex items-center justify-center gap-4 mt-6 text-xs text-primary-100">
-          <span class="flex items-center gap-1.5">
-            <CheckCircle2 class="w-4 h-4" />
-            Free to use
-          </span>
-          <span class="flex items-center gap-1.5">
-            <CheckCircle2 class="w-4 h-4" />
-            No credit card
-          </span>
         </div>
       </div>
     </section>
 
-    <footer class="border-t border-line py-8 text-center text-sm text-muted">
-      <p>Circlo &mdash; Built by Noah</p>
+    <!-- Final CTA -->
+    <section class="max-w-5xl mx-auto px-4 pb-20">
+      <div class="rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 text-inverse p-8 sm:p-12 text-center">
+        <h2 class="text-2xl sm:text-3xl font-bold mb-3">
+          Start managing your savings circle with Circlo.
+        </h2>
+        <p class="text-inverse/80 mb-6 max-w-xl mx-auto">
+          Create a group in minutes — no spreadsheets, no guessing whose turn it is.
+        </p>
+        <div class="inline-flex">
+          <AppButton size="lg" class="bg-card text-primary-700 hover:bg-line-subtle" @click="getStarted">
+            Get started
+            <ArrowRight class="w-4 h-4" />
+          </AppButton>
+        </div>
+        <div class="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-inverse/90">
+          <span class="inline-flex items-center gap-1.5"><CheckCircle2 class="w-4 h-4" />Free to start</span>
+          <span class="inline-flex items-center gap-1.5"><CheckCircle2 class="w-4 h-4" />Built for Ajo &amp; Esusu</span>
+          <span class="inline-flex items-center gap-1.5"><CheckCircle2 class="w-4 h-4" />Transparent records</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="border-t border-line bg-card">
+      <div class="max-w-6xl mx-auto px-4 py-10 grid sm:grid-cols-3 gap-8">
+        <div>
+          <AppLogo :size="30" />
+          <p class="mt-3 text-sm text-muted max-w-xs">
+            Save Together. Grow Together. Digital savings circles for Nigeria.
+          </p>
+        </div>
+        <div>
+          <p class="text-sm font-semibold text-fg mb-3">Product</p>
+          <ul class="space-y-2 text-sm text-muted">
+            <li><button class="hover:text-fg cursor-pointer" @click="router.push({ name: 'Landing', hash: '#how-it-works' })">How it works</button></li>
+            <li><button class="hover:text-fg cursor-pointer" @click="router.push({ name: 'Landing', hash: '#features' })">Features</button></li>
+            <li><button class="hover:text-fg cursor-pointer" @click="getStarted">Get started</button></li>
+          </ul>
+        </div>
+        <div>
+          <p class="text-sm font-semibold text-fg mb-3">Account</p>
+          <ul class="space-y-2 text-sm text-muted">
+            <li><button class="hover:text-fg cursor-pointer" @click="router.push({ name: 'Login' })">Log in</button></li>
+            <li><button class="hover:text-fg cursor-pointer" @click="router.push({ name: 'Register' })">Create account</button></li>
+          </ul>
+        </div>
+      </div>
+      <div class="border-t border-line">
+        <p class="max-w-6xl mx-auto px-4 py-4 text-xs text-muted">
+          © {{ new Date().getFullYear() }} Circlo. All rights reserved.
+        </p>
+      </div>
     </footer>
   </div>
 </template>
