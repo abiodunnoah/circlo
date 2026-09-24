@@ -213,6 +213,54 @@ export const useGroupsStore = defineStore('groups', () => {
     memberListeners.value = { ...current }
   }
 
+  async function enrichGroups(list) {
+    await Promise.all(
+      list.map(async (g) => {
+        g.currentPot =
+          Number(g.contributionAmount || 0) * (Number(g.totalSlots) || Number(g.totalMembers) || 0)
+        g.paidCount = 0
+        g.eligibleCount = Number(g.totalMembers || 0)
+        g.memberSample = []
+
+        try {
+          const membersSnap = await getDocs(collection(db, 'groups', g.id, 'members'))
+          const approved = membersSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((m) => m.status === 'approved' && !m.leftAt)
+          g.memberSample = approved
+            .slice(0, 6)
+            .map((m) => ({ id: m.id, name: m.displayName || 'Member' }))
+
+          const recipientId = g.currentCycleRecipientId
+          if (recipientId) {
+            g.nextRecipientName =
+              approved.find((m) => m.id === recipientId)?.displayName || null
+          }
+
+          const cycle = Number(g.currentCycle || 0)
+          if (cycle > 0) {
+            const contribSnap = await getDocs(
+              query(collection(db, 'groups', g.id, 'contributions'), where('cycle', '==', cycle)),
+            )
+            const paidIds = new Set(
+              contribSnap.docs
+                .filter((d) => d.data().status !== 'void')
+                .map((d) => d.data().userId),
+            )
+            const eligible = approved.filter((m) => (m.joinedCycle ?? 1) <= cycle)
+            g.eligibleCount = eligible.length
+            g.paidCount = eligible.filter((m) => paidIds.has(m.id)).length
+          } else {
+            g.eligibleCount = approved.length
+          }
+        } catch {
+          // keep defaults on failure
+        }
+      }),
+    )
+    return list
+  }
+
   async function rebuildUserGroups() {
     const uid = auth.currentUser?.uid
     if (!uid || !isSubscribed) return
@@ -255,18 +303,7 @@ export const useGroupsStore = defineStore('groups', () => {
       if (row) allGroups.push(row)
     }
 
-    await Promise.all(
-      allGroups.map(async (g) => {
-        const recipientId = g.currentCycleRecipientId
-        if (!recipientId) return
-        try {
-          const recipientDoc = await getDoc(doc(db, 'groups', g.id, 'members', recipientId))
-          g.nextRecipientName = recipientDoc.exists() ? recipientDoc.data().displayName : null
-        } catch {
-          g.nextRecipientName = null
-        }
-      }),
-    )
+    await enrichGroups(allGroups)
 
     if (seq !== rebuildSeq) return
     groups.value = allGroups
@@ -384,18 +421,7 @@ export const useGroupsStore = defineStore('groups', () => {
     }
 
     const allGroups = [...adminGroups, ...memberOnlyGroups]
-
-    for (const g of allGroups) {
-      const recipientId = g.currentCycleRecipientId
-      if (!recipientId) continue
-      try {
-        const recipientDoc = await getDoc(doc(db, 'groups', g.id, 'members', recipientId))
-        g.nextRecipientName = recipientDoc.exists() ? recipientDoc.data().displayName : null
-      } catch (e) {
-        console.error(`Failed to load next recipient for group ${g.id}`, e)
-        g.nextRecipientName = null
-      }
-    }
+    await enrichGroups(allGroups)
 
     groups.value = allGroups
     loading.value = false

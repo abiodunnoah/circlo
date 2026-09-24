@@ -4,60 +4,129 @@ import { useRouter } from 'vue-router'
 import {
   Users,
   Wallet,
-  ShieldCheck,
   Clock,
   ChevronRight,
-  PiggyBank,
+  CheckCircle2,
+  UserPlus,
+  RefreshCw,
+  Bell,
 } from '@lucide/vue'
 import { useAuthStore } from '@/stores/auth'
 import { useGroupsStore } from '@/stores/groups'
 import { useContributionsStore } from '@/stores/contributions'
+import { useNotificationsStore } from '@/stores/notifications'
 import { useToast } from '@/composables/useToast'
 import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import AppStat from '@/components/common/AppStat.vue'
-import AppProgress from '@/components/common/AppProgress.vue'
+import AppProgressRing from '@/components/common/AppProgressRing.vue'
 import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
 import AppAlert from '@/components/common/AppAlert.vue'
 import AppCard from '@/components/common/AppCard.vue'
+import AppMoney from '@/components/common/AppMoney.vue'
+import AppAvatarGroup from '@/components/common/AppAvatarGroup.vue'
 import { formatNaira } from '@/utils/format'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const groupsStore = useGroupsStore()
 const contributionsStore = useContributionsStore()
+const notificationsStore = useNotificationsStore()
 const toast = useToast()
 
 const resending = ref(false)
 
 const needsVerification = computed(() => !!authStore.user && !authStore.user.emailVerified)
 
-async function resendVerification() {
-  resending.value = true
-  try {
-    await authStore.sendVerificationEmail()
-    toast.show('Verification email sent', 'success')
-  } catch (e) {
-    toast.show(e.message, 'error')
-  } finally {
-    resending.value = false
-  }
-}
-
-async function checkVerification() {
-  try {
-    await authStore.refreshUser()
-    if (authStore.user?.emailVerified) {
-      toast.show('Email verified', 'success')
-    } else {
-      toast.show('Email not verified yet. Check your inbox.', 'info')
-    }
-  } catch (e) {
-    toast.show(e.message, 'error')
-  }
-}
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
+})
+const firstName = computed(() => (authStore.displayName || '').trim().split(/\s+/)[0] || 'there')
 
 const groups = computed(() => groupsStore.groups)
+const totalContributed = computed(() => contributionsStore.myTotalContributed)
+
+const activeGroups = computed(() =>
+  groups.value.filter((g) => g.membershipStatus === 'approved' && g.currentCycle > 0),
+)
+
+function nextPayoutDate(g) {
+  const raw = g.currentCycleStartDate || g.startDate
+  const base = raw?.toDate ? raw.toDate() : raw ? new Date(raw) : null
+  if (!base || isNaN(base.getTime())) return null
+  const d = new Date(base)
+  if (g.frequency === 'weekly') d.setDate(d.getDate() + 7)
+  else d.setMonth(d.getMonth() + 1)
+  return d
+}
+
+function daysUntil(date) {
+  if (!date) return null
+  return Math.ceil((date.getTime() - Date.now()) / 86400000)
+}
+
+const nextPayout = computed(() => {
+  let best = null
+  for (const g of activeGroups.value) {
+    const date = nextPayoutDate(g)
+    if (!date) continue
+    if (!best || date < best.date) best = { group: g, date }
+  }
+  if (!best) return null
+  const days = daysUntil(best.date)
+  return {
+    group: best.group,
+    label:
+      days === null
+        ? '—'
+        : days <= 0
+          ? 'Due now'
+          : days === 1
+            ? 'Tomorrow'
+            : `in ${days} days`,
+    recipient: best.group.nextRecipientName || 'A member',
+  }
+})
+
+const paidTotals = computed(() => {
+  let paid = 0
+  let eligible = 0
+  for (const g of activeGroups.value) {
+    paid += g.paidCount || 0
+    eligible += g.eligibleCount || 0
+  }
+  return { paid, eligible }
+})
+
+const recentActivity = computed(() => notificationsStore.notifications.slice(0, 5))
+
+const activityIcon = {
+  paid: CheckCircle2,
+  your_turn: Wallet,
+  new_cycle: RefreshCw,
+  approved: UserPlus,
+  reminder: Bell,
+}
+
+function activityIconFor(type) {
+  return activityIcon[type] || Bell
+}
+
+function timeAgo(ts) {
+  const ms = ts?.toMillis ? ts.toMillis() : ts ? new Date(ts).getTime() : 0
+  if (!ms) return ''
+  const mins = Math.floor((Date.now() - ms) / 60000)
+  if (mins < 1) return 'Just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 7) return `${days}d ago`
+  return new Date(ms).toLocaleDateString()
+}
 
 function openGroup(g) {
   if (g.membershipStatus === 'pending') {
@@ -76,34 +145,26 @@ function retryLoadGroups() {
   groupsStore.subscribeUserGroups()
 }
 
-const totalContributed = computed(() => contributionsStore.myTotalContributed)
-
-const pendingCount = computed(() => {
-  if (groupsStore.pendingRequests.length) return groupsStore.pendingRequests.length
-  return groups.value.reduce((sum, g) => sum + (g.role === 'admin' ? g.pendingCount || 0 : 0), 0)
-})
-
-const isAdminOfAnyGroup = computed(() => groups.value.some((g) => g.role === 'admin'))
-
-const activeGroups = computed(() =>
-  groups.value.filter((g) => g.membershipStatus === 'approved' && g.currentCycle > 0),
-)
-
-const nextPayout = computed(() => {
-  const candidates = activeGroups.value.filter((g) => g.currentCycleRecipientId)
-  if (!candidates.length) return null
-  const mine = candidates.find((g) => g.currentCycleRecipientId === authStore.user?.uid)
-  const g = mine || candidates[0]
-  return {
-    group: g,
-    isMe: g.currentCycleRecipientId === authStore.user?.uid,
-    recipientName: g.nextRecipientName || 'A member',
-    pot: (Number(g.contributionAmount) || 0) * (g.totalSlots || 1),
+async function resendVerification() {
+  resending.value = true
+  try {
+    await authStore.sendVerificationEmail()
+    toast.show('Verification email sent', 'success')
+  } catch (e) {
+    toast.show(e.message, 'error')
+  } finally {
+    resending.value = false
   }
-})
+}
 
-function cycleLabel(g) {
-  return `Cycle ${g.currentCycle} of ${g.totalSlots || 1}`
+async function checkVerification() {
+  try {
+    await authStore.refreshUser()
+    if (authStore.user?.emailVerified) toast.show('Email verified', 'success')
+    else toast.show('Email not verified yet. Check your inbox.', 'info')
+  } catch (e) {
+    toast.show(e.message, 'error')
+  }
 }
 
 onMounted(() => {
@@ -113,9 +174,15 @@ onMounted(() => {
 
 <template>
   <div class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-    <h1 class="text-2xl font-bold text-fg mb-6">
-      Hi{{ authStore.user?.displayName ? ', ' + authStore.user.displayName.split(' ')[0] : '' }}
-    </h1>
+    <div class="flex flex-wrap items-start justify-between gap-4 mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-fg">
+          {{ greeting }}, {{ firstName }}
+          <span aria-hidden="true">👋</span>
+        </h1>
+        <p class="text-sm text-muted mt-1">Here's what's happening in your circles.</p>
+      </div>
+    </div>
 
     <AppAlert
       v-if="needsVerification"
@@ -124,16 +191,16 @@ onMounted(() => {
       class="mb-6"
     >
       <p>Check your inbox for a verification link so you never miss an update.</p>
-      <div class="mt-3 flex gap-2 shrink-0">
+      <div class="mt-3 flex gap-2">
         <button
-          class="text-sm font-medium text-warning-800 underline hover:text-warning-900 py-1 -my-1 cursor-pointer disabled:opacity-50"
+          class="text-sm font-medium text-info-800 underline hover:text-info-900 py-1 -my-1 cursor-pointer disabled:opacity-50"
           :disabled="resending"
           @click="resendVerification"
         >
           {{ resending ? 'Sending...' : 'Resend email' }}
         </button>
         <button
-          class="bg-card border border-warning-300 text-warning-800 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-warning-100 cursor-pointer"
+          class="bg-card border border-info-300 text-info-800 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-info-100 cursor-pointer"
           @click="checkVerification"
         >
           I've verified
@@ -141,113 +208,74 @@ onMounted(() => {
       </div>
     </AppAlert>
 
-    <div v-if="groupsStore.loading" aria-label="Loading..." aria-busy="true">
-      <AppSkeleton class="h-32 w-full rounded-2xl mb-6" />
+    <AppAlert
+      v-if="groupsStore.error && !groupsStore.loading"
+      variant="danger"
+      title="Unable to load your groups"
+      action-label="Try again"
+      class="mb-6"
+      @action="retryLoadGroups"
+    >
+      {{ groupsStore.error }}
+    </AppAlert>
+
+    <template v-if="groupsStore.loading">
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <AppCard v-for="i in 4" :key="i">
-          <AppSkeleton class="h-3 w-20 mb-2" />
-          <AppSkeleton class="h-7 w-16" />
-        </AppCard>
+        <AppCard v-for="i in 4" :key="i"><AppSkeleton class="h-4 w-20 mb-3" /><AppSkeleton class="h-7 w-24" /></AppCard>
       </div>
-      <AppSkeleton class="h-5 w-28 mb-4" />
       <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <AppCard v-for="i in 6" :key="i">
-          <div class="flex items-start justify-between mb-3">
-            <AppSkeleton class="h-4 w-1/2" />
-            <AppSkeleton class="h-5 w-12 rounded-full" />
-          </div>
-          <AppSkeleton class="h-2 w-full rounded-full mb-4" />
-          <div class="space-y-2.5">
-            <AppSkeleton class="h-3 w-full" />
-            <AppSkeleton class="h-3 w-3/5" />
-            <AppSkeleton class="h-3 w-2/3" />
-          </div>
+        <AppCard v-for="i in 3" :key="i">
+          <AppSkeleton class="h-5 w-32 mb-3" />
+          <AppSkeleton class="h-3 w-24 mb-4" />
+          <AppSkeleton class="h-2 w-full mb-4" />
+          <AppSkeleton class="h-8 w-28" />
         </AppCard>
       </div>
-    </div>
+    </template>
 
     <template v-else>
-      <AppAlert
-        v-if="groupsStore.error"
-        variant="danger"
-        title="Couldn't load your groups"
-        action-label="Try again"
-        class="mb-6"
-        @action="retryLoadGroups"
-      >
-        {{ groupsStore.error }}
-      </AppAlert>
-
-      <section
-        v-if="nextPayout"
-        class="relative overflow-hidden rounded-2xl bg-linear-to-br from-primary-600 to-primary-800 text-inverse p-6 mb-6"
-      >
-        <div
-          class="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/10"
-          aria-hidden="true"
-        />
-        <div class="relative">
-          <div class="flex items-center gap-2 text-primary-100 text-sm font-medium">
-            <PiggyBank class="w-4 h-4" />
-            <span>{{ nextPayout.isMe ? "You're up next" : 'Next payout' }}</span>
-          </div>
-          <p class="text-3xl sm:text-4xl font-bold mt-2 tabular-nums">
-            {{ formatNaira(nextPayout.pot) }}
-          </p>
-          <p class="text-sm text-primary-100 mt-1.5">
-            <template v-if="nextPayout.isMe">
-              You'll receive the pot in
-              <span class="font-medium text-inverse break-words">{{ nextPayout.group.name }}</span>
-            </template>
-            <template v-else>
-              <span class="font-medium text-inverse break-words">{{ nextPayout.recipientName }}</span> receives
-              the pot in
-              {{ nextPayout.group.name }}
-            </template>
-          </p>
-          <button
-            class="mt-4 inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 transition-colors text-inverse text-sm font-medium px-3.5 py-2 rounded-lg cursor-pointer"
-            @click="openGroup(nextPayout.group)"
-          >
-            View group
-            <ChevronRight class="w-4 h-4" />
-          </button>
-        </div>
-      </section>
-
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <AppStat label="Active Groups" :value="groups.length" :icon="Users" variant="primary" />
+        <AppStat label="Total contributed" :value="formatNaira(totalContributed)" :icon="Wallet" variant="primary" />
         <AppStat
-          label="Total Contributed"
-          :value="formatNaira(totalContributed)"
-          :icon="Wallet"
-          variant="success"
+          label="Active groups"
+          :value="activeGroups.length"
+          :hint="`${groups.length} total`"
+          :icon="Users"
+          variant="info"
         />
         <AppStat
-          label="As Admin"
-          :value="groups.filter((g) => g.role === 'admin').length"
-          :icon="ShieldCheck"
+          label="Next payout"
+          :value="nextPayout ? nextPayout.label : '—'"
+          :hint="nextPayout ? nextPayout.group.name : 'No active cycle'"
+          :icon="Clock"
           variant="accent"
         />
         <AppStat
-          label="Pending Requests"
-          :value="pendingCount"
-          :icon="Clock"
-          variant="info"
-          :interactive="isAdminOfAnyGroup"
-          @click="isAdminOfAnyGroup && router.push({ name: 'Requests' })"
+          label="Members paid"
+          :value="`${paidTotals.paid}/${paidTotals.eligible}`"
+          hint="This cycle"
+          :icon="CheckCircle2"
+          variant="success"
         />
       </div>
 
-      <h2 class="text-lg font-semibold text-fg mb-4">Your Groups</h2>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-fg">Your groups</h2>
+        <button
+          class="text-sm font-medium text-primary-600 hover:text-primary-700 py-1 -my-1 cursor-pointer"
+          @click="router.push({ name: 'GroupList' })"
+        >
+          View all
+        </button>
+      </div>
 
-      <div v-if="groups.length" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div v-if="groups.length" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <AppCard
           v-for="g in groups"
           :key="g.id"
+          hover
           role="button"
           tabindex="0"
-          hover
           class="cursor-pointer flex flex-col"
           @click="openGroup(g)"
           @keydown.enter="openGroup(g)"
@@ -256,11 +284,6 @@ onMounted(() => {
           <div class="flex items-start justify-between gap-2 mb-3">
             <h3 class="font-semibold text-fg truncate">{{ g.name }}</h3>
             <div class="flex flex-wrap justify-end gap-1.5 shrink-0">
-              <span
-                v-if="g.role === 'admin'"
-                class="text-xs bg-accent-100 text-accent-700 rounded-full px-2 py-0.5 font-medium"
-                >Admin</span
-              >
               <AppStatusBadge
                 v-if="g.membershipStatus === 'pending'"
                 status="pending"
@@ -271,51 +294,71 @@ onMounted(() => {
                 status="rejected"
                 label="Declined"
               />
-              <span
-                class="text-xs bg-success-100 text-success-700 rounded-full px-2 py-0.5 font-medium capitalize"
-                >{{ g.frequency }}</span
+              <AppStatusBadge v-else status="active" label="Active" />
+            </div>
+          </div>
+
+          <p class="text-sm text-muted mb-4">
+            <AppMoney :value="g.contributionAmount" size="md" class="text-fg" /> / {{ g.frequency }}
+          </p>
+
+          <div class="flex items-center gap-4 mb-4">
+            <AppProgressRing
+              :value="g.paidCount || 0"
+              :max="g.eligibleCount || (g.totalSlots || g.totalMembers || 1)"
+              :size="76"
+              :stroke="8"
+            >
+              <span class="text-sm font-bold text-fg tabular-nums"
+                >{{ g.paidCount || 0 }}/{{ g.eligibleCount || g.totalSlots || g.totalMembers || 0 }}</span
               >
+            </AppProgressRing>
+            <div class="min-w-0 flex-1 space-y-2">
+              <div>
+                <p class="text-xs text-muted">Current pot</p>
+                <AppMoney :value="g.currentPot" size="lg" />
+              </div>
+              <AppAvatarGroup v-if="g.memberSample?.length" :members="g.memberSample" :max="4" />
             </div>
           </div>
 
-          <AppProgress
-            :value="g.currentCycle"
-            :max="g.totalSlots || 1"
-            :label="cycleLabel(g)"
-            class="mb-4"
-          />
-
-          <div class="grid grid-cols-2 gap-3 text-sm mb-3">
-            <div>
-              <p class="text-xs text-muted">Contribution</p>
-              <p class="font-semibold text-fg tabular-nums">
-                {{ formatNaira(g.contributionAmount) }}
-              </p>
-            </div>
+          <div class="mt-auto pt-3 border-t border-line flex items-center justify-between gap-2">
             <div class="min-w-0">
-              <p class="text-xs text-muted">Next payout</p>
-              <p class="font-semibold text-fg truncate">{{ g.nextRecipientName || '—' }}</p>
+              <p class="text-xs text-muted">Next recipient</p>
+              <p class="text-sm font-medium text-fg truncate">{{ g.nextRecipientName || '—' }}</p>
             </div>
-          </div>
-
-          <div class="flex items-center justify-between mt-auto pt-3 border-t border-line">
-            <div class="flex items-center gap-1.5 text-xs text-muted">
-              <Users class="w-3.5 h-3.5" />
-              {{ g.totalMembers }} {{ g.totalMembers === 1 ? 'member' : 'members' }}
-            </div>
-            <ChevronRight class="w-4 h-4 text-muted" />
+            <ChevronRight class="w-4 h-4 text-muted shrink-0" />
           </div>
         </AppCard>
       </div>
 
-      <AppCard v-else padding="p-0">
+      <AppCard v-else padding="p-0" class="mb-8">
         <AppEmpty
           title="No groups yet"
-          description="Create a savings group to get started, or join one with an invite link from an admin."
-          action-label="Create your first group"
+          description="Create your first savings circle or join one using an invite link."
+          action-label="Create group"
           @action="router.push({ name: 'CreateGroup' })"
         />
       </AppCard>
+
+      <template v-if="recentActivity.length">
+        <h2 class="text-lg font-semibold text-fg mb-4">Recent activity</h2>
+        <AppCard padding="p-0">
+          <ul class="divide-y divide-line-subtle">
+            <li v-for="n in recentActivity" :key="n.id" class="flex items-start gap-3 px-5 py-3.5">
+              <span
+                class="w-8 h-8 rounded-full bg-line-subtle text-fg-3 flex items-center justify-center shrink-0"
+              >
+                <component :is="activityIconFor(n.type)" class="w-4 h-4" />
+              </span>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm text-fg break-words">{{ n.message }}</p>
+                <p class="text-xs text-muted mt-0.5">{{ timeAgo(n.createdAt) }}</p>
+              </div>
+            </li>
+          </ul>
+        </AppCard>
+      </template>
     </template>
   </div>
 </template>
