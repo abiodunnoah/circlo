@@ -93,6 +93,8 @@ async function seedGroup() {
       groupId: 'g1',
       groupName: 'Test Group',
       adminId: uid.admin,
+    })
+    await setDoc(doc(d, 'invites', 'target1', 'private', 'data'), {
       inviteeEmail: 'joiner@example.com',
     })
     await setDoc(doc(d, 'users', uid.admin), { displayName: 'Admin', memberGroupIds: ['g1'] })
@@ -129,6 +131,33 @@ describe('invites collection', () => {
         adminId: uid.admin,
       }),
     )
+  })
+
+  it('does not expose the invitee email on the public invite doc', async () => {
+    let data
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const snap = await getDoc(doc(ctx.firestore(), 'invites', 'target1'))
+      data = snap.data()
+    })
+    expect(data.inviteeEmail).toBeUndefined()
+  })
+
+  it('lets the invitee read their restricted invite payload', async () => {
+    const d = testEnv
+      .authenticatedContext(uid.joiner, { email: 'joiner@example.com' })
+      .firestore()
+    await assertSucceeds(getDoc(doc(d, 'invites', 'target1', 'private', 'data')))
+  })
+
+  it('blocks other users from reading the restricted invite payload', async () => {
+    const d = testEnv
+      .authenticatedContext(uid.stranger, { email: 'someone@else.com' })
+      .firestore()
+    await assertFails(getDoc(doc(d, 'invites', 'target1', 'private', 'data')))
+  })
+
+  it('blocks unauthenticated users from reading the restricted invite payload', async () => {
+    await assertFails(getDoc(doc(db(), 'invites', 'target1', 'private', 'data')))
   })
 })
 

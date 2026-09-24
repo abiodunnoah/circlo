@@ -33,14 +33,16 @@ service cloud.firestore {
       return isAdminOf(groupId) || isGroupMember(groupId);
     }
 
-    // A targeted invite is valid when it exists, points at this group, and was
-    // addressed to the signed-in user's email.
+    // A targeted invite is valid when it exists, points at this group, and the
+    // restricted invitee record was addressed to the signed-in user's email.
     function inviteMatches(groupId, code) {
       return code is string
         && code.size() > 0
+        && request.auth.token.email != null
         && exists(/databases/$(database)/documents/invites/$(code))
         && get(/databases/$(database)/documents/invites/$(code)).data.groupId == groupId
-        && get(/databases/$(database)/documents/invites/$(code)).data.get('inviteeEmail', '') == request.auth.token.email.lower();
+        && exists(/databases/$(database)/documents/invites/$(code)/private/data)
+        && get(/databases/$(database)/documents/invites/$(code)/private/data).data.get('inviteeEmail', '') == request.auth.token.email.lower();
     }
 
     function rotationNotStarted(groupId) {
@@ -53,15 +55,29 @@ service cloud.firestore {
       allow create: if isSelf(uid);
     }
 
-    // invites/{code} — public resolution of an invite code to a group
+    // invites/{code} — public resolution of an invite code to a group.
+    // The invitee's email lives in a restricted private/data subdoc so it is not
+    // exposed to anyone who merely has the link.
     match /invites/{code} {
       allow read: if true;
       allow create: if isSignedIn()
-        && request.resource.data.groupId != null                                                                                                                                                                                                                                                                                                   
+        && request.resource.data.groupId != null
         && isAdminOf(request.resource.data.groupId);
       allow update, delete: if isSignedIn()
         && resource.data.groupId != null
         && isAdminOf(resource.data.groupId);
+
+      match /private/{docId} {
+        // only the person the invite was addressed to may read it
+        allow read: if isSignedIn()
+          && request.auth.token.email != null
+          && resource.data.get('inviteeEmail', '') == request.auth.token.email.lower();
+        // the group admin writes it when generating the invite
+        allow create: if isSignedIn()
+          && exists(/databases/$(database)/documents/invites/$(code))
+          && isAdminOf(get(/databases/$(database)/documents/invites/$(code)).data.groupId);
+        allow update, delete: if false;
+      }
     }
 
     // groups — members/admin can read; only the admin writes; creation is open to signed-in users

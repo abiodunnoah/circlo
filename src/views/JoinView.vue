@@ -15,7 +15,6 @@ const groupsStore = useGroupsStore()
 const inviteCode = route.query.invite || ''
 const status = ref('loading')
 const groupName = ref('')
-const inviteeEmail = ref('')
 const joinedGroupId = ref('')
 const error = ref('')
 
@@ -31,7 +30,6 @@ onMounted(async () => {
     return
   }
   groupName.value = invite.name
-  inviteeEmail.value = invite.inviteeEmail || ''
 
   await authStore.ready
 
@@ -80,13 +78,9 @@ function goAuth(routeName) {
           <Lock class="w-6 h-6 text-primary-600" />
         </div>
         <h1 class="text-xl font-bold text-fg mb-1 break-words">Join {{ groupName || 'this group' }}</h1>
-        <p class="text-sm text-muted mb-2 break-words">
+        <p class="text-sm text-muted mb-5 break-words">
           Sign in or create an account to join this savings group automatically.
         </p>
-        <p v-if="inviteeEmail" class="text-xs text-primary-700 bg-primary-50 rounded-lg px-3 py-2 mb-5 break-all">
-          Invited: {{ inviteeEmail }}
-        </p>
-        <div v-else class="mb-5" />
         <div class="flex flex-col gap-2">
           <AppButton variant="primary" @click="goAuth('Register')">Create an account</AppButton>
           <AppButton variant="secondary" @click="goAuth('Login')">I already have an account</AppButton>
@@ -117,9 +111,8 @@ function goAuth(routeName) {
         </div>
         <h1 class="text-xl font-bold text-fg mb-1">Wrong account</h1>
         <p class="text-sm text-muted mb-6 break-words">
-          This invite was sent to
-          <span class="font-medium text-fg break-all">{{ inviteeEmail }}</span>. Please sign in with that
-          account to join {{ groupName || 'the group' }}.
+          This invite was sent to a different account. Please sign in with the account it was
+          addressed to, or ask the admin for a new invite.
         </p>
         <div class="flex flex-col gap-2">
           <AppButton variant="primary" @click="goAuth('Login')">Sign in with another account</AppButton>

@@ -516,7 +516,6 @@ export const useGroupsStore = defineStore('groups', () => {
       id: data.groupId,
       name: data.groupName,
       adminId: data.adminId,
-      inviteeEmail: data.inviteeEmail || '',
     }
   }
 
@@ -540,8 +539,10 @@ export const useGroupsStore = defineStore('groups', () => {
       groupId,
       groupName: groupData.name || '',
       adminId: uid,
-      inviteeEmail: email,
       createdAt: serverTimestamp(),
+    })
+    await setDoc(doc(db, 'invites', code, 'private', 'data'), {
+      inviteeEmail: email,
     })
     return { code, email, link: inviteLinkFor(code) }
   }
@@ -555,7 +556,22 @@ export const useGroupsStore = defineStore('groups', () => {
     const invite = await getGroupByInviteCode(code)
     if (!invite) throw new Error('Invalid invite link')
     if (invite.adminId === uid) throw new Error('You are already the admin of this group')
-    if (invite.inviteeEmail && invite.inviteeEmail !== email) {
+
+    // Targeted invites keep the invitee email in a restricted subdoc. Only the
+    // invitee can read it (enforced by rules); a denied read means it's not theirs.
+    let inviteeEmail
+    try {
+      const priv = await getDoc(doc(db, 'invites', code, 'private', 'data'))
+      inviteeEmail = priv.exists() ? priv.data().inviteeEmail || '' : null
+    } catch {
+      throw new Error('wrong_email')
+    }
+
+    if (inviteeEmail === null) {
+      // Legacy generic invite → existing pending request flow
+      return joinGroupByInvite(code, uid, current.displayName || email, current.email || '')
+    }
+    if (inviteeEmail && inviteeEmail !== email) {
       throw new Error('wrong_email')
     }
 
