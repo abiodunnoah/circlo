@@ -45,6 +45,12 @@ function memberSlots(m) {
   return Math.max(1, Number(m?.slots) || 1)
 }
 
+function markedByName(row) {
+  const id = row.contribution?.markedBy
+  if (!id) return '—'
+  return groupsStore.approvedMembers.find((m) => m.id === id)?.displayName || 'Admin'
+}
+
 function nextPosition(m) {
   const turnOrder = groupsStore.currentGroup?.turnOrder
   const received = m?.receivedCount || 0
@@ -720,6 +726,7 @@ async function handleVoid(member) {
                 <th class="px-5 py-3 font-medium text-muted">Status</th>
                 <th class="px-5 py-3 font-medium text-muted hidden sm:table-cell">Amount</th>
                 <th class="px-5 py-3 font-medium text-muted hidden md:table-cell">Date Paid</th>
+                <th v-if="isAdmin" class="px-5 py-3 font-medium text-muted hidden lg:table-cell">Marked by</th>
                 <th v-if="isAdmin" class="px-5 py-3 font-medium text-muted text-right">Actions</th>
               </tr>
             </thead>
@@ -739,6 +746,7 @@ async function handleVoid(member) {
                 </td>
                 <td class="px-5 py-3 text-muted hidden sm:table-cell tabular-nums">{{ row.contribution ? formatNaira(row.contribution.amount) : formatNaira(groupsStore.currentGroup.contributionAmount * memberSlots(row.member)) }}</td>
                 <td class="px-5 py-3 text-muted hidden md:table-cell">{{ row.contribution?.paidAt ? new Date(row.contribution.paidAt.toMillis ? row.contribution.paidAt.toMillis() : row.contribution.paidAt).toLocaleDateString() : '—' }}</td>
+                <td v-if="isAdmin" class="px-5 py-3 text-muted hidden lg:table-cell truncate">{{ markedByName(row) }}</td>
                 <td v-if="isAdmin" class="px-5 py-3">
                   <div class="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
                     <AppButton v-if="!row.isPaid && !row.isVoid" variant="primary" size="xs" @click="openMarkPaidModal(row.member)">Mark Paid</AppButton>
