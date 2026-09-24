@@ -150,7 +150,7 @@ function nav(route) {
       </div>
     </section>
 
-    <section class="bg-card py-16 border-y border-line">
+    <section id="how-it-works" class="bg-card py-16 border-y border-line">
       <div class="max-w-5xl mx-auto px-4">
         <h2 class="text-2xl font-bold text-center text-fg mb-12">How It Works</h2>
         <div class="grid md:grid-cols-3 gap-6">
@@ -167,7 +167,7 @@ function nav(route) {
       </div>
     </section>
 
-    <section class="py-16 max-w-5xl mx-auto px-4">
+    <section id="features" class="py-16 max-w-5xl mx-auto px-4">
       <h2 class="text-2xl font-bold text-center text-fg mb-12">Everything You Need</h2>
       <div class="grid sm:grid-cols-2 gap-6">
         <AppCard v-for="(f, i) in features" :key="i">

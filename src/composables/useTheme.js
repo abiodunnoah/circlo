@@ -1,43 +1,59 @@
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const STORAGE_KEY = 'circlo-theme'
+const MODES = ['light', 'dark', 'system']
 
-const theme = ref('light')
+const mq =
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)')
+    : null
+const systemDark = ref(mq ? mq.matches : false)
+const mode = ref('system')
 
-function getSystemTheme() {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+if (mq) {
+  mq.addEventListener('change', (e) => {
+    systemDark.value = e.matches
+  })
 }
 
-function applyTheme(value) {
-  document.documentElement.classList.toggle('dark', value === 'dark')
+const theme = computed(() =>
+  mode.value === 'system' ? (systemDark.value ? 'dark' : 'light') : mode.value,
+)
+
+function applyTheme() {
+  if (typeof document === 'undefined') return
+  document.documentElement.classList.toggle('dark', theme.value === 'dark')
 }
+
+watch(theme, applyTheme)
+
+function readStored() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    return MODES.includes(stored) ? stored : 'system'
+  } catch {
+    return 'system'
+  }
+}
+
+function setMode(value) {
+  if (!MODES.includes(value)) return
+  mode.value = value
+  try {
+    localStorage.setItem(STORAGE_KEY, value)
+  } catch {
+    // ignore storage failures (private mode)
+  }
+  applyTheme()
+}
+
+function cycleMode() {
+  setMode(MODES[(MODES.indexOf(mode.value) + 1) % MODES.length])
+}
+
+mode.value = readStored()
+applyTheme()
 
 export function useTheme() {
-  function setTheme(value) {
-    theme.value = value
-    localStorage.setItem(STORAGE_KEY, value)
-    applyTheme(value)
-  }
-
-  function toggleTheme() {
-    setTheme(theme.value === 'dark' ? 'light' : 'dark')
-  }
-
-  watch(theme, applyTheme)
-
-  onMounted(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    theme.value = stored || getSystemTheme()
-    applyTheme(theme.value)
-
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    mq.addEventListener('change', (e) => {
-      if (!localStorage.getItem(STORAGE_KEY)) {
-        theme.value = e.matches ? 'dark' : 'light'
-        applyTheme(theme.value)
-      }
-    })
-  })
-
-  return { theme, setTheme, toggleTheme }
+  return { mode, theme, setMode, cycleMode }
 }
