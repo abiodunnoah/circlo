@@ -1,119 +1,106 @@
 # Circlo Design System
 
 Reference for UI work. Keep new screens consistent with the tokens and components below.
+Visual source of truth: `docs/design-reference.png`.
 
 ## Positioning
 
-**"Trust-first community savings."** Circlo digitizes Ajo / Esusu / ROSCA groups. The UI
-prioritizes transparency (who paid, who receives next, the full payout order), warmth (not
-cold banking), and clarity. **Mobile-first** — design phone layouts first, then scale up.
+**"Save together. Stay accountable."** Circlo digitizes Nigerian Ajo / Esusu / ROSCA groups —
+premium fintech, community savings, visual accountability. Warm, clean, trustworthy. Mobile-first.
 
 ## Design tokens
 
-Defined in `src/assets/main.css` under `@theme` (Tailwind v4).
+Defined in `src/assets/main.css` under `@theme` (Tailwind v4). Blue brand + navy dark.
 
-| Token group | Purpose |
-|-------------|---------|
-| `primary-*` (emerald) | Brand, trust, financial health, primary actions |
-| `accent-*` (amber) | The "pot", highlights, secondary emphasis |
-| `success-*` / `warning-*` / `danger-*` / `info-*` | Semantic status |
-| `surface` (`#f7f5f2` / `#0f172a`) | Warm app background |
-| `card` (`#ffffff` / `#1e293b`) | Card/panel background |
-| `line` (`#e8e3db` / `#334155`) | Borders |
-| `line-subtle` (`#f1ede8` / `#1e293b`) | Subtle borders, hover states |
-| `fg` / `fg-2` / `fg-3` / `fg-4` | Text hierarchy (primary → faint) |
-| `muted` (`#64748b` / `#94a3b8`) | Secondary text |
-| `inverse` (`#ffffff`) | Text on filled/branded surfaces |
-| `overlay` | Modal scrim |
-| `avatar-1-bg`…`avatar-8-fg` | Deterministic avatar identity colors (theme-aware) |
+### Brand
+`primary-*` (Circlo blue `#3155e7`; dark `#4f6fff`). `accent-*` is **mapped to the brand blue**
+(the old amber accent is retired — amber survives only as `warning`).
 
-**Rule:** never use raw Tailwind palette colors (`red-500`, `amber-100`, …) for status. Use the
-semantic tokens so meaning stays consistent and themable.
+### Semantic layout tokens
+| Token | Light | Dark |
+|---|---|---|
+| `surface` | `#f7f8fc` | `#0b1020` |
+| `card` | `#ffffff` | `#111827` |
+| `card-soft` | `#f9fafb` | `#182033` |
+| `line` | `#eaecf0` | `#293548` |
+| `line-subtle` | `#f2f4f7` | `#1f2937` |
+| `line-strong` | `#d0d5dd` | `#384766` |
+| `fg` / `fg-2` / `fg-3` / `fg-4` | `#101828` / `#475467` / `#667085` / `#98a2b3` | `#f9fafb` / `#cbd5e1` / `#94a3b8` / `#64748b` |
+| `muted` | `#667085` | `#94a3b8` |
+| `inverse` | `#ffffff` | `#ffffff` |
+| `overlay` | `rgba(0,0,0,.4)` | `rgba(0,0,0,.6)` |
+| `avatar-1-bg`…`avatar-8-fg` | identity colors | dark variants |
+
+### Status
+`success` `#16a36a` · `warning` `#f59e0b` · `danger` `#dc4b4b` · `info` (brand blue).
+Each has `-50/-100/-200` tint backgrounds and `-500/-600/-700/-800` shades, with dark overrides.
+
+**Rule:** never use raw Tailwind palette colors for status — use the semantic tokens.
 
 ## Typography
 
-- Font: **Inter** (`--font-sans`)
-- Scale: `text-xs` labels/meta · `text-sm` body · `text-lg` section titles · `text-2xl` page
-  titles · `text-3xl`/`text-4xl` hero figures
-- **Money is always `tabular-nums`** so columns align.
+Inter. Page title `text-2xl` (24/700) · section `text-lg` (18/600) · card heading `15–17/600` ·
+body `text-sm`/`text-base` · metadata `text-xs`. **Money is always `tabular-nums`.**
 
-## Layout conventions
+## App shell
 
-- Page shell: `max-w-*` + `px-4 sm:px-6 py-8`
-- Cards: `bg-card rounded-xl border border-line shadow-sm`
-- Navigation: desktop top nav; **mobile fixed bottom tab bar** (5 primary items) with a
-  hamburger for secondary items (Join Requests, Reports) and logout
-- Authenticated mobile content gets `pb-24` so it clears the tab bar
-
-**Mobile rules:** wrap tables in `TableWrap`; add `truncate` (fixed-width cells) or
-`break-words` (user-generated names/emails) to prevent horizontal overflow; use
-`min-h-[calc(100dvh-…)]` for full-height shells; header action rows use `flex-wrap gap-2`.
+- **Desktop (lg+):** `AppSidebar` (256px) + `AppTopbar` + content. Sidebar: logo, primary nav
+  (Dashboard, My Groups, Contributions, Rotation, Reports, Notifications, Profile), user footer
+  (avatar, name, theme control, logout).
+- **Mobile:** `AppTopbar` + `AppMobileNav` (5 items: Home, Groups, Contributions, Alerts, Profile).
+- **Public pages:** `AppNavbar` (marketing navbar).
+- `AppLayout` picks the shell from `route.meta.requiresAuth` and owns real-time subscriptions.
 
 ## Components (`src/components/common/`)
 
 | Component | Notes |
 |-----------|-------|
-| `AppAlert` | Inline banner — `variant`: `danger`/`warning`/`info`/`success`, optional `title` + `action-label` |
-| `AppAvatar` | Initials + deterministic color; `size`: `sm`/`md`/`lg`/`xl` |
-| `AppButton` | `variant`: `primary`/`secondary`/`danger`/`success`/`warning`/`accent`/`outline`/`outline-danger`/`ghost`; `size`: `xs`/`sm`/`md`/`lg`; `block`, `loading`, `disabled` |
-| `AppCard` | Card surface; `padding` (default `p-5`), `hover`. Extra layout classes fall through |
-| `AppInput` | Label + control + error/hint; `as`: `input`/`select`/`textarea`; `#trailing` slot (e.g. password eye). Unlisted attrs (`autocomplete`, `minlength`…) pass to the control, `class` to the wrapper |
-| `AppTabs` | Segmented control — `v-model`, `tabs` (strings or `{ label, value, badge }`) |
-| `AppConfirm` | Confirm dialog built on `AppModal` + `AppButton`; `variant`, `confirm-label`, `loading` |
-| `TableWrap` | Guarantees `overflow-x-auto` for tables |
-| `AppProgress` | `value`/`max`, `variant`, `size`, `label`, `show-value` |
-| `AppStat` | Metric card with icon chip; `interactive` for clickable |
-| `AppStatusBadge` | Icon + label status chip |
-| `PayoutTimeline` | Visual payout order (used in Group Detail → Schedule) |
-| `AppModal`, `AppToast`, `AppEmpty`, `AppSkeleton`, `AppBackButton` | Primitives (`AppModal` exposes a `#footer` slot) |
+| `AppButton` | `variant`: primary/secondary/danger/success/warning/accent/outline/outline-danger/ghost; `size`: xs/sm/md/lg; `block`, `loading` |
+| `AppCard` | `padding`, `hover` |
+| `AppInput` | `as`: input/select/textarea; `#trailing` slot |
+| `AppSelect` / `AppTextarea` / `AppDateInput` | thin wrappers over `AppInput` |
+| `AppPageHeader` | title, subtitle, icon, `#actions` |
+| `AppMoney` | `formatNaira` + `tabular-nums`; `size`, `muted` |
+| `AppAvatar` / `AppAvatarGroup` | initials avatars; group collapses to `+N` |
+| `AppProgress` / `AppProgressRing` | linear / circular progress (both expose `role=progressbar`) |
+| `AppTabs` | `variant`: segmented / underline; `tabs` support `badge` |
+| `AppStatusBadge` | icon + label status chip (never color alone) |
+| `AppAlert` | danger/warning/info/success banner |
+| `AppDropdown` | trigger + menu, outside-click/Esc close |
+| `AppDrawer` | bottom sheet on mobile, centered dialog on desktop |
+| `AppModal` | dialog with `#footer` slot |
+| `AppConfirm` | confirm dialog (Modal + Buttons) |
+| `AppErrorState` | icon, message, retry |
+| `AppEmpty` | empty state with CTA |
+| `AppSkeleton` / `AppLoadingSpinner` | loading |
+| `AppToast` | toast container/host |
+| `AppThemeToggle` | `variant`: icon / segmented (Light·Dark·System) |
+| `AppLogo` | mark/full wordmark |
+| `AppIconButton` | icon-only button with optional `badge` |
+| `TableWrap` | `overflow-x-auto` table shell |
+| `PayoutTimeline` | visual payout order |
 
-## Status vocabulary (`AppStatusBadge`)
+## Status vocabulary
 
-| `status` | Meaning | Color |
-|----------|---------|-------|
-| `paid`, `received` | Paid / received the pot | success |
-| `next` | Up next in the payout order | info |
-| `pending` | Awaiting approval / unpaid | warning |
-| `owing`, `rejected`, `left` | Owing, declined, left | danger |
-| `active` | Admin / active | primary |
-| `default` | Neutral | slate |
+`paid`/`received` → success · `next` → info · `pending`/`unpaid` → warning ·
+`owing`/`rejected`/`left` → danger · `active` → success/primary · `void` → neutral.
+**Unpaid is amber (warning), never red** — it does not block the cycle.
 
-## Conventions
+## Theme
 
-- **Money:** `formatNaira()` from `@/utils/format` + `tabular-nums`.
-- **Avatars:** always `AppAvatar` (never hand-rolled initials).
-- **Status:** always `AppStatusBadge` (never ad-hoc color chips).
-- **Errors/notices:** always `AppAlert` (never raw red boxes).
-- **Icons:** `@lucide/vue` — the only exception is the WhatsApp brand mark (no brand icons in Lucide).
-- **Motion:** respect `prefers-reduced-motion` (handled globally in `main.css`).
+Light / Dark / **System** (`useTheme` composable; persisted in `localStorage` as `circlo-theme`;
+FOUC guard in `index.html`). Use semantic tokens only — no raw `slate-*`/`bg-white`.
 
-## Dark mode
+## Mobile rules
 
-System-preference default with manual toggle (Sun/Moon icon in navbar). Persisted in
-`localStorage` under `circlo-theme`. FOUC prevention script in `index.html`.
-
-- Toggle: `useTheme()` composable (`src/composables/useTheme.js`)
-- HTML class: `.dark` on `<html>` element
-- **Always use semantic tokens** (`bg-card`, `text-fg`, `border-line`) — never raw `slate-*`
-- Status tints (`-50`, `-100`) are overridden in `.dark` for dark-friendly backgrounds
-- `bg-white` → `bg-card`, `text-slate-*` → `text-fg*`, `border-slate-*` → `border-line*`
+Wrap tables in `TableWrap`; use `truncate`/`break-words` to prevent overflow; `100dvh` shells;
+`flex-wrap gap-2` header rows; content clears the bottom nav (`pb-24`).
 
 ## Accessibility
 
-- **Focus:** a global `:where(:focus-visible)` outline (in `main.css`) gives every control a
-  visible ring. Components that define their own ring (`AppButton`, `AppInput`) opt out via
-  `focus:outline-none`, so there is never a double indicator.
-- **Icon-only buttons** require an `aria-label`.
-- **Clickable cards/rows:** use a real `<button>`/`<RouterLink>` where content allows; for
-  block-content cards use `role="button"` + `tabindex="0"` + `@keydown.enter` **and**
-  `@keydown.space.prevent` (see the group cards in `DashboardView`/`GroupListView`).
-- Progress bars expose `role="progressbar"` + `aria-valuenow/min/max`.
-- Active navigation uses `aria-current="page"`.
-- **Tap targets:** keep interactive controls ≥ 44px on mobile (icon-only buttons get ≥ 32px
-  via padding; WCAG 2.5.8 minimum is 24px).
-- **Page transitions** use `<Transition name="page">` (fade + 4px rise); neutralized
-  automatically under `prefers-reduced-motion`.
+Global `:where(:focus-visible)` ring; icon-only buttons need `aria-label`; `role=progressbar`;
+`aria-current="page"` on nav; status uses icon + text; targets ≥ 24px (mobile ~40px).
 
 ## Verification
 
-Run `npm run lint`, `npm run build`, and `npm test` before shipping UI changes.
+`npm run lint`, `npm run build`, `npm test` (component + store + rules) before shipping.
