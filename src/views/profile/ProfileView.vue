@@ -3,21 +3,28 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGroupsStore } from '@/stores/groups'
+import { useNotificationsStore } from '@/stores/notifications'
 import { useToast } from '@/composables/useToast'
+import { LogOut, Sun } from '@lucide/vue'
+import AppPageHeader from '@/components/common/AppPageHeader.vue'
 import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import AppInput from '@/components/common/AppInput.vue'
 import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
+import AppThemeToggle from '@/components/common/AppThemeToggle.vue'
+import AppConfirm from '@/components/common/AppConfirm.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const groupsStore = useGroupsStore()
+const notificationsStore = useNotificationsStore()
 const toast = useToast()
 
 const nameInput = ref('')
 const saving = ref(false)
+const showLogout = ref(false)
 
 const displayName = computed(() => authStore.displayName)
 const email = computed(() => authStore.email)
@@ -45,6 +52,14 @@ async function saveName() {
   } finally {
     saving.value = false
   }
+}
+
+async function confirmLogout() {
+  showLogout.value = false
+  groupsStore.unsubscribeUserGroups()
+  notificationsStore.unsubscribeNotifications()
+  await authStore.logout()
+  router.push({ name: 'Landing' })
 }
 
 function roleLabel(g) {
@@ -77,7 +92,7 @@ onMounted(() => {
 
 <template>
   <div class="max-w-2xl mx-auto px-4 sm:px-6 py-8">
-    <h1 class="text-2xl font-bold text-fg mb-6">Profile</h1>
+    <AppPageHeader title="Profile" subtitle="Manage your account and preferences." />
 
     <AppCard class="mb-6">
       <div class="flex items-center gap-4 mb-5">
@@ -90,7 +105,7 @@ onMounted(() => {
 
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-fg-2 mb-1">Display Name</label>
+          <label class="block text-sm font-medium text-fg-2 mb-1">Display name</label>
           <div class="flex gap-2">
             <AppInput
               v-model="nameInput"
@@ -101,12 +116,7 @@ onMounted(() => {
               class="flex-1"
               @keyup.enter="saveName"
             />
-            <AppButton
-              variant="primary"
-              :disabled="!canSave"
-              :loading="saving"
-              @click="saveName"
-            >
+            <AppButton variant="primary" :disabled="!canSave" :loading="saving" @click="saveName">
               {{ saving ? 'Saving...' : 'Save' }}
             </AppButton>
           </div>
@@ -120,8 +130,17 @@ onMounted(() => {
       </div>
     </AppCard>
 
-    <AppCard>
-      <h2 class="font-semibold text-fg mb-3">Your Groups</h2>
+    <AppCard class="mb-6">
+      <h2 class="font-semibold text-fg mb-1 flex items-center gap-2">
+        <Sun class="w-4 h-4 text-fg-4" />
+        Appearance
+      </h2>
+      <p class="text-sm text-muted mb-4">Choose how Circlo looks on this device.</p>
+      <AppThemeToggle variant="segmented" />
+    </AppCard>
+
+    <AppCard class="mb-6">
+      <h2 class="font-semibold text-fg mb-3">Your groups</h2>
 
       <div v-if="groupsStore.loading" aria-label="Loading..." aria-busy="true" class="divide-y divide-line-subtle">
         <div v-for="i in 3" :key="i" class="flex items-center justify-between py-2.5">
@@ -149,5 +168,24 @@ onMounted(() => {
 
       <p v-else class="text-sm text-muted py-2">You're not part of any groups yet.</p>
     </AppCard>
+
+    <AppCard>
+      <h2 class="font-semibold text-fg mb-1">Sign out</h2>
+      <p class="text-sm text-muted mb-4">Sign out of your Circlo account on this device.</p>
+      <AppButton variant="outline-danger" @click="showLogout = true">
+        <LogOut class="w-4 h-4" />
+        Sign out
+      </AppButton>
+    </AppCard>
+
+    <AppConfirm
+      :open="showLogout"
+      title="Sign out?"
+      message="Are you sure you want to sign out of Circlo?"
+      confirm-label="Sign out"
+      variant="danger"
+      @confirm="confirmLogout"
+      @cancel="showLogout = false"
+    />
   </div>
 </template>

@@ -4,15 +4,17 @@ import { useRouter } from 'vue-router'
 import { useGroupsStore } from '@/stores/groups'
 import { useReportsStore } from '@/stores/reports'
 import { useToast } from '@/composables/useToast'
+import { useTheme } from '@/composables/useTheme'
 import { Download, Wallet, Users, CalendarClock } from '@lucide/vue'
 import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
-import AppBackButton from '@/components/common/AppBackButton.vue'
 import AppAlert from '@/components/common/AppAlert.vue'
 import AppStat from '@/components/common/AppStat.vue'
 import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import AppCard from '@/components/common/AppCard.vue'
+import AppSelect from '@/components/common/AppSelect.vue'
+import AppPageHeader from '@/components/common/AppPageHeader.vue'
 import TableWrap from '@/components/common/TableWrap.vue'
 import { formatNaira } from '@/utils/format'
 import Chart from 'chart.js/auto'
@@ -23,6 +25,7 @@ const router = useRouter()
 const groupsStore = useGroupsStore()
 const reportsStore = useReportsStore()
 const toast = useToast()
+const { theme } = useTheme()
 
 const selectedGroupId = ref('')
 const selectedCycle = ref('all')
@@ -46,9 +49,7 @@ const totalContributed = computed(() =>
 
 const currentCycle = computed(() => reportsStore.group?.currentCycle || 0)
 
-const currentRow = computed(() =>
-  reportsStore.rows.find((r) => r.cycle === currentCycle.value),
-)
+const currentRow = computed(() => reportsStore.rows.find((r) => r.cycle === currentCycle.value))
 
 const cycleRange = computed(() => {
   if (!reportsStore.rows.length) return '—'
@@ -56,6 +57,27 @@ const cycleRange = computed(() => {
   const last = reportsStore.rows[reportsStore.rows.length - 1].cycle
   return first === last ? `${first}` : `${first} - ${last}`
 })
+
+function themeColors() {
+  const s = getComputedStyle(document.documentElement)
+  const v = (name, fallback) => s.getPropertyValue(name).trim() || fallback
+  return {
+    primary: v('--color-primary-500', '#3155e7'),
+    success: v('--color-success-500', '#16a36a'),
+    warning: v('--color-warning-500', '#f59e0b'),
+    text: v('--color-fg-3', '#667085'),
+    grid: v('--color-line', '#eaecf0'),
+  }
+}
+
+function withAlpha(hex, alpha) {
+  const h = hex.replace('#', '')
+  if (h.length !== 6) return hex
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
 
 function destroyCharts() {
   if (barChart) {
@@ -70,6 +92,8 @@ function destroyCharts() {
 
 function renderCharts() {
   destroyCharts()
+  const c = themeColors()
+
   if (barCanvas.value && reportsStore.rows.length) {
     barChart = new Chart(barCanvas.value, {
       type: 'bar',
@@ -79,17 +103,23 @@ function renderCharts() {
           {
             label: 'Collected',
             data: reportsStore.rows.map((r) => r.totalCollected),
-            backgroundColor: 'rgba(5, 150, 105, 0.75)',
+            backgroundColor: withAlpha(c.primary, 0.85),
             borderRadius: 4,
           },
         ],
       },
       options: {
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: c.text }, border: { color: c.grid } },
+          y: { beginAtZero: true, ticks: { color: c.text }, grid: { color: c.grid }, border: { color: c.grid } },
+        },
       },
     })
   }
+
   if (donutCanvas.value && currentRow.value && currentCycle.value > 0) {
     const unpaid = Math.max(0, currentRow.value.totalCount - currentRow.value.paidCount)
     donutChart = new Chart(donutCanvas.value, {
@@ -99,11 +129,16 @@ function renderCharts() {
         datasets: [
           {
             data: [currentRow.value.paidCount, unpaid],
-            backgroundColor: ['rgba(5, 150, 105, 0.8)', 'rgba(245, 158, 11, 0.8)'],
+            backgroundColor: [withAlpha(c.success, 0.9), withAlpha(c.warning, 0.9)],
+            borderWidth: 0,
           },
         ],
       },
-      options: { plugins: { legend: { position: 'bottom' } } },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { color: c.text } } },
+      },
     })
   }
 }
@@ -144,7 +179,7 @@ function exportPdf() {
 watch(selectedGroupId, () => selectGroup())
 
 watch(
-  [() => reportsStore.rows, currentCycle, selectedCycle],
+  [() => reportsStore.rows, currentCycle, selectedCycle, theme],
   async () => {
     await nextTick()
     renderCharts()
@@ -152,23 +187,24 @@ watch(
   { deep: true },
 )
 
-watch(adminGroups, (groups) => {
-  if (groups.length && !selectedGroupId.value) {
-    selectedGroupId.value = groups[0].id
-  }
-}, { immediate: true })
+watch(
+  adminGroups,
+  (groups) => {
+    if (groups.length && !selectedGroupId.value) selectedGroupId.value = groups[0].id
+  },
+  { immediate: true },
+)
 
 onMounted(() => {})
-
-onUnmounted(() => {
-  destroyCharts()
-})
+onUnmounted(() => destroyCharts())
 </script>
 
 <template>
   <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-    <AppBackButton :fallback="{ name: 'Dashboard' }" />
-    <h1 class="text-2xl font-bold text-fg mb-6">Reports</h1>
+    <AppPageHeader
+      title="Reports"
+      subtitle="Financial summary and rotation history for your groups."
+    />
 
     <AppCard v-if="adminGroups.length === 0" padding="p-0">
       <AppEmpty
@@ -182,26 +218,17 @@ onUnmounted(() => {
     <template v-else>
       <AppCard class="mb-6">
         <div class="grid sm:grid-cols-3 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-fg-2 mb-1">Group</label>
-            <select v-model="selectedGroupId" class="block w-full rounded-lg border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-              <option v-for="g in adminGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-fg-2 mb-1">Cycle</label>
-            <select v-model="selectedCycle" class="block w-full rounded-lg border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-              <option value="all">All Cycles</option>
-              <option v-for="c in reportsStore.rows" :key="c.cycle" :value="String(c.cycle)">Cycle {{ c.cycle }}</option>
-            </select>
-          </div>
+          <AppSelect v-model="selectedGroupId" label="Group">
+            <option v-for="g in adminGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
+          </AppSelect>
+          <AppSelect v-model="selectedCycle" label="Cycle">
+            <option value="all">All cycles</option>
+            <option v-for="c in reportsStore.rows" :key="c.cycle" :value="String(c.cycle)">
+              Cycle {{ c.cycle }}
+            </option>
+          </AppSelect>
           <div class="flex items-end">
-            <AppButton
-              variant="primary"
-              block
-              :disabled="!reportsStore.rows.length"
-              @click="exportPdf"
-            >
+            <AppButton variant="primary" block :disabled="!reportsStore.rows.length" @click="exportPdf">
               <Download class="w-4 h-4" />
               Export PDF
             </AppButton>
@@ -227,14 +254,10 @@ onUnmounted(() => {
           </AppCard>
         </div>
         <AppCard padding="p-0" class="overflow-hidden">
-          <div class="px-5 py-3 bg-line-subtle border-b border-line">
-            <AppSkeleton class="h-4 w-32" />
-          </div>
           <div v-for="i in 4" :key="i" class="flex items-center gap-4 px-5 py-3 border-b border-line-subtle">
             <AppSkeleton class="h-3.5 w-16" />
             <AppSkeleton class="h-3.5 w-20" />
             <AppSkeleton class="h-3.5 w-24" />
-            <AppSkeleton class="h-3.5 w-20" />
             <AppSkeleton class="h-5 w-16 rounded-full" />
           </div>
         </AppCard>
@@ -245,64 +268,63 @@ onUnmounted(() => {
       </AppAlert>
 
       <template v-else>
+        <h2 class="text-lg font-semibold text-fg mb-4">Contribution summary</h2>
         <div class="grid sm:grid-cols-3 gap-4 mb-6">
+          <AppStat label="Total contributed" :value="formatNaira(totalContributed)" :icon="Wallet" variant="primary" />
           <AppStat
-            label="Total Contributed"
-            :value="formatNaira(totalContributed)"
-            :icon="Wallet"
-            variant="success"
-          />
-          <AppStat
-            :label="`Members Paid (Cycle ${currentCycle})`"
+            :label="`Members paid (cycle ${currentCycle})`"
             :value="`${currentRow ? currentRow.paidCount : 0} / ${currentRow ? currentRow.totalCount : 0}`"
             :icon="Users"
             variant="info"
           />
-          <AppStat label="Cycles Covered" :value="cycleRange" :icon="CalendarClock" variant="accent" />
+          <AppStat label="Cycles covered" :value="cycleRange" :icon="CalendarClock" variant="accent" />
         </div>
 
         <div class="grid lg:grid-cols-3 gap-4 mb-6">
           <AppCard padding="p-4" class="lg:col-span-2">
-            <p class="text-sm font-medium text-fg-2 mb-3">Collected per Cycle</p>
+            <p class="text-sm font-semibold text-fg mb-3">Contribution by cycle</p>
             <div class="h-64">
               <canvas ref="barCanvas" />
             </div>
           </AppCard>
           <AppCard padding="p-4">
-            <p class="text-sm font-medium text-fg-2 mb-3">Cycle {{ currentCycle }} Payment Status</p>
+            <p class="text-sm font-semibold text-fg mb-3">Payment status · Cycle {{ currentCycle }}</p>
             <div class="h-64 flex items-center justify-center">
               <canvas ref="donutCanvas" />
             </div>
           </AppCard>
         </div>
 
+        <h2 class="text-lg font-semibold text-fg mb-4">Rotation history</h2>
         <AppCard padding="p-0" class="overflow-hidden">
           <TableWrap>
-              <thead>
-                <tr class="border-b border-line bg-line-subtle">
-                  <th class="text-left px-5 py-3 font-medium text-muted">Cycle</th>
-                  <th class="text-left px-5 py-3 font-medium text-muted hidden sm:table-cell">Started</th>
-                  <th class="text-left px-5 py-3 font-medium text-muted hidden sm:table-cell">Total Collected</th>
-                  <th class="text-left px-5 py-3 font-medium text-muted">Recipient</th>
-                  <th class="text-left px-5 py-3 font-medium text-muted hidden sm:table-cell">Contributions</th>
-                  <th class="text-left px-5 py-3 font-medium text-muted">Status</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-line-subtle">
-                <tr v-for="r in filteredRows" :key="r.cycle" class="hover:bg-line-subtle">
-                  <td class="px-5 py-3 font-medium text-fg">Cycle {{ r.cycle }}</td>
-                  <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ r.startedAt ? new Date(r.startedAt.toMillis ? r.startedAt.toMillis() : r.startedAt).toLocaleDateString() : '—' }}</td>
-                  <td class="px-5 py-3 text-muted hidden sm:table-cell tabular-nums">{{ formatNaira(r.totalCollected) }}</td>
-                  <td class="px-5 py-3">{{ r.recipientName }}</td>
-                  <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ r.paidCount }}/{{ r.totalCount }}</td>
-                  <td class="px-5 py-3">
-                    <AppStatusBadge
-                      :status="r.allPaid ? 'received' : 'pending'"
-                      :label="r.allPaid ? 'Complete' : 'Incomplete'"
-                    />
-                  </td>
-                </tr>
-              </tbody>
+            <thead>
+              <tr class="border-b border-line bg-line-subtle">
+                <th class="text-left px-5 py-3 font-medium text-muted">Cycle</th>
+                <th class="text-left px-5 py-3 font-medium text-muted hidden sm:table-cell">Started</th>
+                <th class="text-left px-5 py-3 font-medium text-muted hidden sm:table-cell">Total collected</th>
+                <th class="text-left px-5 py-3 font-medium text-muted">Recipient</th>
+                <th class="text-left px-5 py-3 font-medium text-muted hidden sm:table-cell">Contributions</th>
+                <th class="text-left px-5 py-3 font-medium text-muted">Status</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-line-subtle">
+              <tr v-for="r in filteredRows" :key="r.cycle" class="hover:bg-line-subtle">
+                <td class="px-5 py-3 font-medium text-fg">Cycle {{ r.cycle }}</td>
+                <td class="px-5 py-3 text-muted hidden sm:table-cell">
+                  {{ r.startedAt ? new Date(r.startedAt.toMillis ? r.startedAt.toMillis() : r.startedAt).toLocaleDateString() : '—' }}
+                </td>
+                <td class="px-5 py-3 text-muted hidden sm:table-cell tabular-nums">{{ formatNaira(r.totalCollected) }}</td>
+                <td class="px-5 py-3 text-fg">{{ r.recipientName }}</td>
+                <td class="px-5 py-3 text-muted hidden sm:table-cell">{{ r.paidCount }}/{{ r.totalCount }}</td>
+                <td class="px-5 py-3">
+                  <AppStatusBadge
+                    :status="r.allPaid ? 'received' : 'pending'"
+                    :label="r.allPaid ? 'Complete' : 'Incomplete'"
+                  />
+                </td>
+              </tr>
+            </tbody>
           </TableWrap>
           <div v-if="!filteredRows.length" class="px-5 py-10 text-center text-sm text-muted">
             No cycles recorded yet. Start the first cycle to begin collecting contributions.
