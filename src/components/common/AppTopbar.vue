@@ -68,6 +68,7 @@ const displayName = computed(() => authStore.user?.displayName || authStore.user
         <button
           class="cursor-pointer rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
           aria-label="Profile"
+          title="Profile"
           @click="router.push({ name: 'Profile' })"
         >
           <AppAvatar :name="displayName" :id="authStore.user?.uid" size="sm" />

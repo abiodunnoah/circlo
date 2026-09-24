@@ -15,6 +15,7 @@ import {
   getDocs,
   query,
   where,
+  writeBatch,
 } from 'firebase/firestore'
 
 const PROJECT_ID = 'circlo-rules-test'
@@ -87,6 +88,12 @@ async function seedGroup() {
       groupId: 'g1',
       groupName: 'Test Group',
       adminId: uid.admin,
+    })
+    await setDoc(doc(d, 'invites', 'target1'), {
+      groupId: 'g1',
+      groupName: 'Test Group',
+      adminId: uid.admin,
+      inviteeEmail: 'joiner@example.com',
     })
     await setDoc(doc(d, 'users', uid.admin), { displayName: 'Admin', memberGroupIds: ['g1'] })
     await setDoc(doc(d, 'users', uid.member), { displayName: 'Member', memberGroupIds: ['g1'] })
@@ -271,6 +278,51 @@ describe('members subcollection', () => {
   it('blocks member doc deletion (delete is denied for everyone)', async () => {
     await seedGroup()
     await assertFails(deleteDoc(doc(db(uid.admin), 'groups', 'g1', 'members', uid.member)))
+  })
+})
+
+describe('targeted invite auto-join', () => {
+  beforeEach(seedGroup)
+
+  function joinBatch(authed, email) {
+    const d = testEnv.authenticatedContext(authed, { email }).firestore()
+    const batch = writeBatch(d)
+    batch.set(doc(d, 'groups', 'g1', 'members', authed), {
+      userId: authed,
+      displayName: 'Joiner',
+      email,
+      status: 'approved',
+      inviteCode: 'target1',
+      slots: 1,
+      rotationOrder: 3,
+      hasReceived: false,
+      receivedCount: 0,
+      joinedCycle: 1,
+    })
+    batch.update(doc(d, 'groups', 'g1'), { totalMembers: 3, totalSlots: 3 })
+    return batch
+  }
+
+  it('lets the invited email join as approved and bump group totals', async () => {
+    await assertSucceeds(joinBatch(uid.joiner, 'joiner@example.com').commit())
+  })
+
+  it('blocks a different email from using a targeted invite', async () => {
+    await assertFails(joinBatch(uid.stranger, 'someone@else.com').commit())
+  })
+
+  it('blocks a targeted auto-join mid-rotation', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), 'groups', 'g1'), {
+        currentCycleRecipientId: uid.member,
+      })
+    })
+    await assertFails(joinBatch(uid.joiner, 'joiner@example.com').commit())
+  })
+
+  it('blocks an already-approved member from changing group totals', async () => {
+    const d = testEnv.authenticatedContext(uid.member, { email: 'member@example.com' }).firestore()
+    await assertFails(updateDoc(doc(d, 'groups', 'g1'), { totalMembers: 99, totalSlots: 99 }))
   })
 })
 

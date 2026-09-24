@@ -12,8 +12,13 @@ import {
   ChevronDown,
   AlertTriangle,
   UserPlus,
-  Copy,
   ShieldAlert,
+  CheckCircle2,
+  Bell,
+  Ban,
+  HandCoins,
+  Undo2,
+  GripVertical,
 } from '@lucide/vue'
 import AppSkeleton from '@/components/common/AppSkeleton.vue'
 import AppModal from '@/components/common/AppModal.vue'
@@ -24,6 +29,7 @@ import AppButton from '@/components/common/AppButton.vue'
 import AppTabs from '@/components/common/AppTabs.vue'
 import AppAlert from '@/components/common/AppAlert.vue'
 import AppCard from '@/components/common/AppCard.vue'
+import AppInput from '@/components/common/AppInput.vue'
 import AppMoney from '@/components/common/AppMoney.vue'
 import TableWrap from '@/components/common/TableWrap.vue'
 import PayoutTimeline from '@/components/common/PayoutTimeline.vue'
@@ -87,6 +93,8 @@ const initialTab = (() => {
 
 const tab = ref(initialTab)
 const inviteLink = ref('')
+const inviteEmail = ref('')
+const inviteGenerating = ref(false)
 const showInviteModal = ref(false)
 const showRemoveModal = ref(false)
 const memberToRemove = ref(null)
@@ -99,6 +107,8 @@ const forcePayout = ref(false)
 const showArchiveModal = ref(false)
 const showDeleteGroupModal = ref(false)
 const scheduleOrder = ref([])
+const scheduleDirty = ref(false)
+const dragIndex = ref(null)
 const pendingSection = ref(null)
 const shouldScrollToPending = ref(route.query.tab === 'pending')
 
@@ -153,13 +163,16 @@ const canRemoveMembers = computed(() => isAdmin.value && (currentCycle.value ===
 
 const canReorder = computed(() => isAdmin.value && (currentCycle.value === 0 || rotationConcluded.value))
 
-const detailTabs = computed(() => [
-  { label: 'Overview', value: 'overview' },
-  { label: 'Contributions', value: 'contributions' },
-  { label: 'Members', value: 'members', badge: groupsStore.pendingMembers.length || undefined },
-  { label: 'Rotation', value: 'rotation' },
-  { label: 'Settings', value: 'settings' },
-])
+const detailTabs = computed(() => {
+  const tabs = [
+    { label: 'Overview', value: 'overview' },
+    { label: 'Contributions', value: 'contributions' },
+    { label: 'Members', value: 'members', badge: groupsStore.pendingMembers.length || undefined },
+    { label: 'Rotation', value: 'rotation' },
+  ]
+  if (isAdmin.value) tabs.push({ label: 'Settings', value: 'settings' })
+  return tabs
+})
 
 const nextMember = computed(() => {
   const unreceived = eligibleMembers.value
@@ -303,10 +316,15 @@ watch(selectedCycle, (cycle) => {
 })
 
 watch(
-  () => tab.value,
-  (value) => {
-    if (value === 'rotation') initSchedule()
+  [
+    () => tab.value,
+    () => groupsStore.approvedMembers.length,
+    () => groupsStore.currentGroup?.turnOrder,
+  ],
+  ([value]) => {
+    if (value === 'rotation' && !scheduleDirty.value) initSchedule()
   },
+  { immediate: true },
 )
 
 watch(
@@ -336,11 +354,22 @@ watch(
   { immediate: true },
 )
 
-async function copyInviteLink() {
-  if (!inviteLink.value) {
-    inviteLink.value = await groupsStore.generateInviteLink(groupId)
-  }
+function openInviteModal() {
+  inviteEmail.value = ''
+  inviteLink.value = ''
   showInviteModal.value = true
+}
+
+async function generateInvite() {
+  inviteGenerating.value = true
+  try {
+    const result = await groupsStore.createTargetedInvite(groupId, inviteEmail.value)
+    inviteLink.value = result.link
+  } catch (e) {
+    toast.show(e.message, 'error')
+  } finally {
+    inviteGenerating.value = false
+  }
 }
 
 async function copyToClipboard() {
@@ -412,6 +441,7 @@ async function confirmEditSlots() {
 }
 
 function initSchedule() {
+  scheduleDirty.value = false
   const turnOrder = groupsStore.currentGroup?.turnOrder
   const members = groupsStore.approvedMembers
   if (Array.isArray(turnOrder) && turnOrder.length > 0) {
@@ -434,11 +464,28 @@ function moveTurn(index, direction) {
   arr[index] = arr[target]
   arr[target] = temp
   scheduleOrder.value = arr
+  scheduleDirty.value = true
+}
+
+function onDragStart(index) {
+  dragIndex.value = index
+}
+
+function onDrop(index) {
+  const from = dragIndex.value
+  dragIndex.value = null
+  if (from === null || from === index) return
+  const arr = [...scheduleOrder.value]
+  const [moved] = arr.splice(from, 1)
+  arr.splice(index, 0, moved)
+  scheduleOrder.value = arr
+  scheduleDirty.value = true
 }
 
 async function saveSchedule() {
   try {
     await groupsStore.saveTurnOrder(groupId, scheduleOrder.value)
+    scheduleDirty.value = false
     toast.show('Payout schedule saved', 'success')
   } catch (e) {
     toast.show(e.message, 'error')
@@ -448,6 +495,8 @@ async function saveSchedule() {
 async function resetSchedule() {
   try {
     await groupsStore.resetTurnOrder(groupId)
+    scheduleDirty.value = false
+    initSchedule()
     toast.show('Schedule reset to default', 'success')
   } catch (e) {
     toast.show(e.message, 'error')
@@ -456,23 +505,23 @@ async function resetSchedule() {
 
 function spreadEvenly(memberId) {
   const total = scheduleOrder.value.length
-  const memberTurns = scheduleOrder.value.filter((id) => id === memberId)
-  const count = memberTurns.length
-  if (count === 0 || count >= total) return
-  const gap = total / count
-  const others = scheduleOrder.value.map((id, i) => ({ id, origIndex: i })).filter((e) => e.id !== memberId)
+  const count = scheduleOrder.value.filter((id) => id === memberId).length
+  if (count <= 1 || count >= total) return
+  const others = scheduleOrder.value.filter((id) => id !== memberId)
   const arr = Array.from({ length: total }, () => null)
+  const used = new Set()
   for (let i = 0; i < count; i++) {
-    const pos = Math.round(i * gap)
+    let pos = Math.round((i * total) / count)
+    while (used.has(pos) || pos >= total) pos = (pos + 1) % total
+    used.add(pos)
     arr[pos] = memberId
   }
   let oi = 0
   for (let i = 0; i < total; i++) {
-    if (arr[i] === null) {
-      arr[i] = others[oi++].id
-    }
+    if (arr[i] === null) arr[i] = others[oi++]
   }
   scheduleOrder.value = arr
+  scheduleDirty.value = true
 }
 
 async function handleStartCycle() {
@@ -618,8 +667,8 @@ async function handleVoid(member) {
         :group="groupsStore.currentGroup"
         :is-admin="isAdmin"
         :progress="rotationProgress"
-        @invite="copyInviteLink"
-        @copy-invite="copyInviteLink"
+        @invite="openInviteModal"
+        @copy-invite="openInviteModal"
         @settings="tab = 'settings'"
       />
 
@@ -748,13 +797,31 @@ async function handleVoid(member) {
                 <td class="px-5 py-3 text-muted hidden md:table-cell">{{ row.contribution?.paidAt ? new Date(row.contribution.paidAt.toMillis ? row.contribution.paidAt.toMillis() : row.contribution.paidAt).toLocaleDateString() : '—' }}</td>
                 <td v-if="isAdmin" class="px-5 py-3 text-muted hidden lg:table-cell truncate">{{ markedByName(row) }}</td>
                 <td v-if="isAdmin" class="px-5 py-3">
-                  <div class="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-                    <AppButton v-if="!row.isPaid && !row.isVoid" variant="primary" size="xs" @click="openMarkPaidModal(row.member)">Mark Paid</AppButton>
-                    <button v-if="!row.isPaid && !row.isVoid && selectedCycle === currentCycle && cycleStarted" class="text-xs text-warning-600 hover:text-warning-700 py-1.5 -my-1.5 cursor-pointer" @click="handleRemindSingle(row.member)">Remind</button>
-                    <button v-else-if="row.isPaid" class="text-xs text-danger-600 hover:text-danger-700 py-1.5 -my-1.5 cursor-pointer" @click="handleVoid(row.member)">Void</button>
-                    <AppButton v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && canConfirmPayout" variant="accent" size="xs" @click="openPayoutModal(row.member, false)">Confirm Payout</AppButton>
-                    <button v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && !canConfirmPayout && unpaidDuesCount > 0" class="text-xs text-warning-700 hover:text-warning-800 font-medium py-1.5 -my-1.5 cursor-pointer" title="Some members haven't paid yet — force confirm anyway" @click="openPayoutModal(row.member, true)">Force Payout</button>
-                    <button v-if="cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId" class="text-xs text-primary-700 hover:text-primary-800 py-1.5 -my-1.5 cursor-pointer" @click="handleUndoPayout(row.member)">Undo Payout</button>
+                  <div class="flex flex-wrap items-center justify-end gap-1.5">
+                    <AppButton v-if="!row.isPaid && !row.isVoid" variant="primary" size="xs" @click="openMarkPaidModal(row.member)">
+                      <CheckCircle2 class="w-3.5 h-3.5" />
+                      Mark paid
+                    </AppButton>
+                    <AppButton v-if="!row.isPaid && !row.isVoid && selectedCycle === currentCycle && cycleStarted" variant="secondary" size="xs" title="Send a payment reminder" @click="handleRemindSingle(row.member)">
+                      <Bell class="w-3.5 h-3.5" />
+                      Remind
+                    </AppButton>
+                    <AppButton v-else-if="row.isPaid" variant="outline-danger" size="xs" @click="handleVoid(row.member)">
+                      <Ban class="w-3.5 h-3.5" />
+                      Void
+                    </AppButton>
+                    <AppButton v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && canConfirmPayout" variant="accent" size="xs" @click="openPayoutModal(row.member, false)">
+                      <HandCoins class="w-3.5 h-3.5" />
+                      Confirm payout
+                    </AppButton>
+                    <AppButton v-if="!cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId && !canConfirmPayout && unpaidDuesCount > 0" variant="warning" size="xs" title="Some members haven't paid yet — force confirm anyway" @click="openPayoutModal(row.member, true)">
+                      <AlertTriangle class="w-3.5 h-3.5" />
+                      Force payout
+                    </AppButton>
+                    <AppButton v-if="cyclePayoutConfirmed && row.member.id === groupsStore.currentGroup?.currentCycleRecipientId" variant="secondary" size="xs" @click="handleUndoPayout(row.member)">
+                      <Undo2 class="w-3.5 h-3.5" />
+                      Undo
+                    </AppButton>
                   </div>
                 </td>
               </tr>
@@ -810,7 +877,7 @@ async function handleVoid(member) {
                   {{ m.displayName }}
                   <span v-if="m.userId === groupsStore.currentGroup.adminId" class="text-xs text-accent-600 font-medium">(admin)</span>
                 </p>
-                <p class="text-xs text-muted truncate">{{ m.email }}</p>
+                <p v-if="isAdmin" class="text-xs text-muted truncate">{{ m.email }}</p>
                 <p class="text-xs text-accent-600 truncate">{{ memberSlots(m) === 1 ? '1 slot' : `${memberSlots(m)} slots` }} &middot; received {{ m.receivedCount || 0 }}/{{ memberSlots(m) }}</p>
               </div>
               <div class="flex flex-col items-end gap-1.5 shrink-0">
@@ -885,7 +952,7 @@ async function handleVoid(member) {
           <div class="flex items-center justify-between px-5 py-4 border-b border-line">
             <div>
               <h3 class="text-sm font-semibold text-fg">Edit Schedule</h3>
-              <p class="text-xs text-muted mt-0.5">Move turns up or down to interleave payouts. Each row is one payout turn.</p>
+              <p class="text-xs text-muted mt-0.5">Drag rows to reorder, or use the arrows. Each row is one payout turn.</p>
             </div>
             <div class="flex gap-2 shrink-0">
               <AppButton variant="secondary" size="xs" @click="resetSchedule">Reset</AppButton>
@@ -893,7 +960,18 @@ async function handleVoid(member) {
             </div>
           </div>
           <div class="divide-y divide-line-subtle">
-            <div v-for="(memberId, idx) in scheduleOrder" :key="idx" class="flex items-center gap-3 px-5 py-2.5">
+            <div
+              v-for="(memberId, idx) in scheduleOrder"
+              :key="idx"
+              class="flex items-center gap-3 px-5 py-2.5 cursor-grab active:cursor-grabbing transition-colors"
+              :class="dragIndex === idx ? 'bg-primary-50' : ''"
+              draggable="true"
+              @dragstart="onDragStart(idx)"
+              @dragover.prevent
+              @drop="onDrop(idx)"
+              @dragend="dragIndex = null"
+            >
+              <GripVertical class="hidden sm:block w-4 h-4 text-fg-4 shrink-0" aria-hidden="true" />
               <span class="text-xs text-muted w-5 text-right tabular-nums">{{ idx + 1 }}.</span>
               <AppAvatar :name="groupsStore.approvedMembers.find((m) => m.id === memberId)?.displayName" :id="memberId" size="sm" />
               <div class="flex-1 min-w-0">
@@ -952,16 +1030,12 @@ async function handleVoid(member) {
         <AppCard padding="p-0" class="overflow-hidden">
           <div class="px-5 py-4 border-b border-line">
             <h3 class="text-sm font-semibold text-fg">Invite &amp; access</h3>
-            <p class="text-xs text-muted mt-0.5">Share the invite link with people you want in this group.</p>
+            <p class="text-xs text-muted mt-0.5">Invite a member by email. They join automatically when they open the link.</p>
           </div>
           <div class="flex flex-wrap gap-2 px-5 py-4">
-            <AppButton variant="primary" @click="copyInviteLink">
+            <AppButton variant="primary" @click="openInviteModal">
               <UserPlus class="w-4 h-4" />
-              Invite members
-            </AppButton>
-            <AppButton v-if="isAdmin" variant="secondary" @click="copyInviteLink">
-              <Copy class="w-4 h-4" />
-              Copy invite link
+              Invite a member
             </AppButton>
           </div>
         </AppCard>
@@ -994,18 +1068,39 @@ async function handleVoid(member) {
       <AppButton variant="primary" @click="router.push({ name: 'GroupList' })">Back to Groups</AppButton>
     </AppCard>
 
-    <AppModal :open="showInviteModal" title="Invite Members" @close="showInviteModal = false">
-      <p class="text-sm text-muted mb-3">Share this link with your members. Anyone with the link can request to join.</p>
-      <div class="flex gap-2">
-        <input :value="inviteLink" readonly class="flex-1 min-w-0 rounded-lg border border-line px-3 py-2 text-sm bg-line-subtle" />
-        <AppButton variant="primary" @click="copyToClipboard">Copy</AppButton>
+    <AppModal :open="showInviteModal" title="Invite a member" @close="showInviteModal = false">
+      <p class="text-sm text-muted mb-3">
+        Enter the email your member signed up with. They'll join automatically when they open the link.
+      </p>
+      <div class="flex flex-wrap sm:flex-nowrap gap-2">
+        <AppInput
+          v-model="inviteEmail"
+          type="email"
+          placeholder="member@example.com"
+          class="flex-1"
+          @keyup.enter="generateInvite"
+        />
+        <AppButton variant="primary" :loading="inviteGenerating" @click="generateInvite">
+          Generate link
+        </AppButton>
       </div>
-      <AppButton variant="success" block class="mt-3" @click="shareToWhatsApp">
+      <template v-if="inviteLink">
+        <div class="mt-4">
+          <p class="text-xs text-muted mb-1">
+            Invite link for <span class="font-medium text-fg break-all">{{ inviteEmail }}</span>
+          </p>
+          <div class="flex gap-2">
+            <input :value="inviteLink" readonly class="flex-1 min-w-0 rounded-lg border border-line px-3 py-2 text-sm bg-line-subtle" />
+            <AppButton variant="primary" @click="copyToClipboard">Copy</AppButton>
+          </div>
+        </div>
+        <AppButton variant="success" block class="mt-3" @click="shareToWhatsApp">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
         </svg>
         Share on WhatsApp
-      </AppButton>
+        </AppButton>
+      </template>
     </AppModal>
 
     <AppModal :open="showCycleModal" title="Start New Cycle" @close="showCycleModal = false">

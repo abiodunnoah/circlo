@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { db, auth } from '@/firebase'
-import { collection, doc, query, where, getDocs, getDoc, addDoc, updateDoc, setDoc, deleteDoc, onSnapshot, arrayUnion, arrayRemove, serverTimestamp, deleteField } from 'firebase/firestore'
+import { collection, doc, query, where, getDocs, getDoc, addDoc, updateDoc, setDoc, deleteDoc, onSnapshot, arrayUnion, arrayRemove, serverTimestamp, deleteField, writeBatch } from 'firebase/firestore'
 import { createNotification } from '@/stores/notifications'
 
 function generateInviteCode() {
@@ -512,7 +512,123 @@ export const useGroupsStore = defineStore('groups', () => {
     const inviteSnap = await getDoc(doc(db, 'invites', inviteCode))
     if (!inviteSnap.exists()) return null
     const data = inviteSnap.data()
-    return { id: data.groupId, name: data.groupName, adminId: data.adminId }
+    return {
+      id: data.groupId,
+      name: data.groupName,
+      adminId: data.adminId,
+      inviteeEmail: data.inviteeEmail || '',
+    }
+  }
+
+  function inviteLinkFor(code) {
+    return `${window.location.origin}/join?invite=${code}`
+  }
+
+  async function createTargetedInvite(groupId, inviteeEmail) {
+    const uid = auth.currentUser?.uid
+    if (!uid) throw new Error('You must be signed in to do this')
+    const groupDoc = await getDoc(doc(db, 'groups', groupId))
+    if (!groupDoc.exists()) throw new Error('Group not found')
+    const groupData = groupDoc.data()
+    if (groupData.adminId !== uid) throw new Error('Only the group admin can invite members')
+
+    const email = String(inviteeEmail || '').trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Enter a valid email address')
+
+    const code = generateInviteCode()
+    await setDoc(doc(db, 'invites', code), {
+      groupId,
+      groupName: groupData.name || '',
+      adminId: uid,
+      inviteeEmail: email,
+      createdAt: serverTimestamp(),
+    })
+    return { code, email, link: inviteLinkFor(code) }
+  }
+
+  async function acceptInvite(code) {
+    const current = auth.currentUser
+    const uid = current?.uid
+    if (!uid) throw new Error('You must be signed in to join')
+    const email = (current.email || '').toLowerCase()
+
+    const invite = await getGroupByInviteCode(code)
+    if (!invite) throw new Error('Invalid invite link')
+    if (invite.adminId === uid) throw new Error('You are already the admin of this group')
+    if (invite.inviteeEmail && invite.inviteeEmail !== email) {
+      throw new Error('wrong_email')
+    }
+
+    const groupId = invite.id
+
+    let existing = null
+    try {
+      const memberSnap = await getDoc(doc(db, 'groups', groupId, 'members', uid))
+      if (memberSnap.exists()) existing = memberSnap.data()
+    } catch {
+      /* not yet a member */
+    }
+
+    if (existing) {
+      if (existing.status === 'approved') {
+        await ensureMembership(uid, groupId)
+        throw new Error('You are already a member of this group')
+      }
+      if (existing.status === 'rejected') {
+        throw new Error('Your previous request to join this group was declined. Please contact the admin.')
+      }
+      if (existing.status === 'left') {
+        throw new Error('You have left this group. Please contact the admin if you want to rejoin.')
+      }
+    }
+
+    const groupDoc = await getDoc(doc(db, 'groups', groupId))
+    const groupData = groupDoc.exists() ? groupDoc.data() : {}
+    const currentCycle = groupData.currentCycle || 0
+
+    if (!existing && groupData.currentCycleRecipientId) {
+      throw new Error('mid-rotation')
+    }
+
+    const membersSnap = await getDocs(collection(db, 'groups', groupId, 'members'))
+    const approved = membersSnap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((m) => m.status === 'approved' && !m.leftAt)
+    const nextOrder = approved.length
+      ? approved.reduce((max, m) => Math.max(max, (m.rotationOrder || 0) + memberSlots(m) - 1), 0) + 1
+      : 1
+
+    const slots = Math.max(1, Number(existing?.slots) || 1)
+    const wasPending = existing?.status === 'pending'
+
+    const batch = writeBatch(db)
+    batch.set(
+      doc(db, 'groups', groupId, 'members', uid),
+      {
+        userId: uid,
+        displayName: current.displayName || email,
+        email: current.email || '',
+        rotationOrder: existing?.rotationOrder || nextOrder,
+        hasReceived: existing?.hasReceived || false,
+        slots,
+        receivedCount: existing?.receivedCount || 0,
+        status: 'approved',
+        joinedCycle: existing?.joinedCycle ?? currentCycle + 1,
+        joinedAt: existing?.joinedAt || serverTimestamp(),
+        approvedAt: serverTimestamp(),
+        inviteCode: code,
+      },
+      { merge: true },
+    )
+    batch.update(doc(db, 'groups', groupId), {
+      totalMembers: (groupData.totalMembers || 0) + 1,
+      totalSlots: (groupData.totalSlots || 0) + slots,
+      ...(wasPending ? { pendingCount: Math.max(0, (groupData.pendingCount || 0) - 1) } : {}),
+    })
+    await batch.commit()
+    await ensureMembership(uid, groupId)
+
+    return { groupId, name: invite.name, status: 'joined' }
   }
 
   async function joinGroupByInvite(inviteCode, userId, displayName, email) {
@@ -1012,6 +1128,9 @@ export const useGroupsStore = defineStore('groups', () => {
     unsubscribeUserGroups,
     generateInviteLink,
     getGroupByInviteCode,
+    inviteLinkFor,
+    createTargetedInvite,
+    acceptInvite,
     joinGroupByInvite,
     approveMember,
     rejectMember,

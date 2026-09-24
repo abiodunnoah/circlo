@@ -33,6 +33,20 @@ service cloud.firestore {
       return isAdminOf(groupId) || isGroupMember(groupId);
     }
 
+    // A targeted invite is valid when it exists, points at this group, and was
+    // addressed to the signed-in user's email.
+    function inviteMatches(groupId, code) {
+      return code is string
+        && code.size() > 0
+        && exists(/databases/$(database)/documents/invites/$(code))
+        && get(/databases/$(database)/documents/invites/$(code)).data.groupId == groupId
+        && get(/databases/$(database)/documents/invites/$(code)).data.get('inviteeEmail', '') == request.auth.token.email.lower();
+    }
+
+    function rotationNotStarted(groupId) {
+      return groupDoc(groupId).data.get('currentCycleRecipientId', null) == null;
+    }
+
     // users/{uid} — users manage only their own profile
     match /users/{uid} {
       allow read, update, delete: if isSelf(uid);
@@ -63,26 +77,51 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendingCount'])
           && request.resource.data.pendingCount == resource.data.pendingCount + 1
           && memberStatus(groupId, request.auth.uid) == 'pending'
+        )
+        || (
+          // Targeted invite auto-join: the joiner bumps the group totals in the
+          // same batch that makes their (new) member doc approved.
+          isSignedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalMembers', 'totalSlots', 'pendingCount'])
+          && memberStatus(groupId, request.auth.uid) != 'approved'
+          && getAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.status == 'approved'
+          && getAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.userId == request.auth.uid
         );
       allow delete: if isAdminOf(groupId);
 
       match /members/{memberId} {
         allow read: if canReadGroup(groupId)
           || (isSignedIn() && memberId == request.auth.uid);
-        // members may submit a pending self-join request via an invite link
+        // members may submit a pending self-join request via an invite link,
+        // or auto-join as approved via an invite addressed to their email
         allow create: if isAdminOf(groupId)
           || (
             isSignedIn()
             && memberId == request.auth.uid
             && request.resource.data.userId == request.auth.uid
             && request.resource.data.status == 'pending'
-            && groupDoc(groupId).data.get('currentCycleRecipientId', null) == null
+            && rotationNotStarted(groupId)
+          )
+          || (
+            isSignedIn()
+            && memberId == request.auth.uid
+            && request.resource.data.userId == request.auth.uid
+            && request.resource.data.status == 'approved'
+            && inviteMatches(groupId, request.resource.data.get('inviteCode', ''))
+            && rotationNotStarted(groupId)
           );
         allow update: if isAdminOf(groupId)
           || (
             isSignedIn()
             && memberId == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])
+          )
+          || (
+            isSignedIn()
+            && memberId == request.auth.uid
+            && request.resource.data.status == 'approved'
+            && inviteMatches(groupId, request.resource.data.get('inviteCode', ''))
+            && rotationNotStarted(groupId)
           );
         allow delete: if false;
       }

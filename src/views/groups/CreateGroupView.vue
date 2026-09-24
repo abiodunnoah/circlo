@@ -7,6 +7,7 @@ import { useToast } from '@/composables/useToast'
 import AppBackButton from '@/components/common/AppBackButton.vue'
 import AppAlert from '@/components/common/AppAlert.vue'
 import AppButton from '@/components/common/AppButton.vue'
+import AppCard from '@/components/common/AppCard.vue'
 import AppInput from '@/components/common/AppInput.vue'
 
 const router = useRouter()

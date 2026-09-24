@@ -82,6 +82,7 @@ function goSection(hash) {
           <button
             class="p-2 text-fg-2 cursor-pointer"
             aria-label="Toggle menu"
+            title="Menu"
             @click="mobileOpen = !mobileOpen"
           >
             <Menu v-if="!mobileOpen" class="w-6 h-6" />

@@ -30,6 +30,7 @@ const variantClass = computed(
     class="relative inline-flex items-center justify-center rounded-lg transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
     :class="[sizeClass, variantClass]"
     :aria-label="label || undefined"
+    :title="label || undefined"
     @click="$emit('click', $event)"
   >
     <slot />

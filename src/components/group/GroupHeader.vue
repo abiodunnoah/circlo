@@ -35,7 +35,7 @@ defineEmits(['invite', 'copy-invite', 'settings'])
           </p>
           <p v-if="isAdmin" class="text-xs text-primary-600 font-medium mt-1">You are the admin</p>
         </div>
-        <div class="shrink-0">
+        <div v-if="isAdmin" class="shrink-0">
           <AppDropdown>
             <template #trigger>
               <AppIconButton label="Group actions">
@@ -43,6 +43,7 @@ defineEmits(['invite', 'copy-invite', 'settings'])
               </AppIconButton>
             </template>
             <button
+              v-if="isAdmin"
               type="button"
               class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-fg-2 hover:bg-line-subtle cursor-pointer"
               @click="$emit('invite')"
@@ -60,6 +61,7 @@ defineEmits(['invite', 'copy-invite', 'settings'])
               Copy invite link
             </button>
             <button
+              v-if="isAdmin"
               type="button"
               class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-fg-2 hover:bg-line-subtle cursor-pointer"
               @click="$emit('settings')"
