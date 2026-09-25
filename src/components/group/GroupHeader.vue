@@ -5,7 +5,7 @@ import AppStatusBadge from '@/components/common/AppStatusBadge.vue'
 import AppProgress from '@/components/common/AppProgress.vue'
 import AppDropdown from '@/components/common/AppDropdown.vue'
 import AppIconButton from '@/components/common/AppIconButton.vue'
-import { MoreVertical, UserPlus, Link2, Settings } from '@lucide/vue'
+import { MoreVertical, UserPlus, Settings } from '@lucide/vue'
 import { formatNaira } from '@/utils/format'
 
 defineProps({
@@ -14,7 +14,7 @@ defineProps({
   progress: { type: Object, default: () => ({}) },
 })
 
-defineEmits(['invite', 'copy-invite', 'settings'])
+defineEmits(['invite', 'settings'])
 </script>
 
 <template>
@@ -50,15 +50,6 @@ defineEmits(['invite', 'copy-invite', 'settings'])
             >
               <UserPlus class="w-4 h-4 text-fg-4" />
               Invite members
-            </button>
-            <button
-              v-if="isAdmin"
-              type="button"
-              class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-fg-2 hover:bg-line-subtle cursor-pointer"
-              @click="$emit('copy-invite')"
-            >
-              <Link2 class="w-4 h-4 text-fg-4" />
-              Copy invite link
             </button>
             <button
               v-if="isAdmin"

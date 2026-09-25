@@ -668,7 +668,6 @@ async function handleVoid(member) {
         :is-admin="isAdmin"
         :progress="rotationProgress"
         @invite="openInviteModal"
-        @copy-invite="openInviteModal"
         @settings="tab = 'settings'"
       />
 
